@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchUiContent, type UiContent } from "../../api/ui-content";
-import ProjectsSection from "../../components/ProjectsSection";
+import ProjectsSection from "../../components/ProjectsSection"; // This line is not changed.
+import DashboardActivityCard from "./components/DashboardActivity";
 import SkillsSection from "../../components/SkillsSection";
 import ExperienceSection from "../../components/ExperienceSection";
 import DashboardStats from "./components/DashboardStats";
@@ -507,41 +508,13 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {isCandidate && (
-              <div className="card">
-                <div className="card-header">
-                  <h3>{uiContent.activity}</h3>
-                </div>
-
-                <div className="card-body">
-                  {activities.length > 0 ? (
-                    <div className="activity-list">
-                      {activities.map((activity) => (
-                        <div key={activity.id} className="mb-2 text-sm">
-                          <div className="font-semibold">{activity.title}</div>
-                          <div className="text-xs muted">
-                            {formatRelativeTime(activity.created_at)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-center muted text-sm">
-                      {uiContent.emptyActivity}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
+  {isCandidate && (
+  <DashboardActivityCard activities={activities} uiContent={uiContent} />
+)}                
           </main>
 
           <aside>
-            {isCandidate && (
-              <SkillsSection
-                onProfileChange={loadProfileSummary}
-                onUpdate={handleSkillsUpdate}
-              />
-            )}
+
 
             {isCandidate && (
               <div className="card">
