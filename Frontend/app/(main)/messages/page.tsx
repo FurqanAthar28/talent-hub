@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { LIVE_REFRESH_INTERVAL_MS } from "../../config/constants";
 import { fetchUiContent, type UiContent } from "../../api/ui-content";
 import {
   fetchConversationMessages,
@@ -28,8 +29,6 @@ function formatMessageTime(value: string) {
   }).format(new Date(value));
 }
 
-const LIVE_REFRESH_INTERVAL_MS = 3000;
-
 export default function MessagesPage() {
   const [uiContent, setUiContent] = useState<UiContent>({});
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -40,11 +39,22 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
   const [threadLoading, setThreadLoading] = useState(false);
   const [sending, setSending] = useState(false);
+
   const activeConversationIdRef = useRef<number | null>(null);
+  const messageListEndRef = useRef<HTMLDivElement | null>(null);
+  const messageInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeConversationId) ||
     null;
+
+  const scrollToLatestMessage = useCallback(() => {
+    messageListEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  const focusMessageInput = useCallback(() => {
+    messageInputRef.current?.focus();
+  }, []);
 
   const loadMessages = useCallback(
     async (
@@ -62,6 +72,7 @@ export default function MessagesPage() {
       try {
         const messageData = await fetchConversationMessages(content, conversationId);
         setMessages(messageData);
+
         setConversations((current) =>
           current.map((conversation) =>
             conversation.id === conversationId
@@ -71,6 +82,7 @@ export default function MessagesPage() {
         );
       } catch (error) {
         console.error("Failed to load conversation messages:", error);
+
         if (showErrors) {
           setNotice(content.messageUnableToLoad);
         }
@@ -95,7 +107,9 @@ export default function MessagesPage() {
         typeof window !== "undefined"
           ? Number(new URLSearchParams(window.location.search).get("conversation"))
           : 0;
+
       const firstConversationId = conversationData[0]?.id || null;
+
       const selectedId = conversationData.some(
         (conversation) => conversation.id === requestedId
       )
@@ -122,6 +136,16 @@ export default function MessagesPage() {
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+
+  useEffect(() => {
+    scrollToLatestMessage();
+  }, [messages, scrollToLatestMessage]);
+
+  useEffect(() => {
+    if (activeConversationId) {
+      focusMessageInput();
+    }
+  }, [activeConversationId, focusMessageInput]);
 
   useEffect(() => {
     if (!uiContent.apiConversations || loading) return;
@@ -160,6 +184,7 @@ export default function MessagesPage() {
       refreshLiveMessages,
       LIVE_REFRESH_INTERVAL_MS
     );
+
     window.addEventListener("focus", refreshLiveMessages);
     document.addEventListener("visibilitychange", refreshLiveMessages);
 
@@ -174,12 +199,15 @@ export default function MessagesPage() {
   async function selectConversation(conversationId: number) {
     setActiveConversationId(conversationId);
     await loadMessages(uiContent, conversationId);
+    focusMessageInput();
   }
 
   async function handleSendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!activeConversationId || sending || !draft.trim()) return;
+    const trimmedDraft = draft.trim();
+
+    if (!activeConversationId || sending || !trimmedDraft) return;
 
     setSending(true);
     setNotice("");
@@ -188,9 +216,11 @@ export default function MessagesPage() {
       const message = await sendConversationMessage(
         uiContent,
         activeConversationId,
-        draft
+        trimmedDraft
       );
+
       setMessages((current) => [...current, message]);
+
       setConversations((current) =>
         current.map((conversation) =>
           conversation.id === activeConversationId
@@ -203,7 +233,9 @@ export default function MessagesPage() {
             : conversation
         )
       );
+
       setDraft("");
+      focusMessageInput();
     } catch (error) {
       console.error("Failed to send message:", error);
       setNotice(error instanceof Error ? error.message : uiContent.messageUnableToSend);
@@ -256,14 +288,17 @@ export default function MessagesPage() {
                     <span className="connection-avatar">
                       {getInitials(conversation.participantName)}
                     </span>
+
                     <span className="message-conversation-main">
                       <span className="message-conversation-title">
                         {conversation.participantName}
                       </span>
+
                       <span className="message-conversation-preview">
                         {conversation.lastMessage || conversation.participantHeadline}
                       </span>
                     </span>
+
                     {conversation.unreadCount > 0 && (
                       <span className="status-badge status-warning">
                         {conversation.unreadCount} {uiContent.messageUnread}
@@ -308,15 +343,20 @@ export default function MessagesPage() {
                       </div>
                     ))
                   )}
+
+                  <div ref={messageListEndRef} />
                 </div>
 
                 <form className="message-compose" onSubmit={handleSendMessage}>
                   <input
+                    ref={messageInputRef}
                     type="text"
                     value={draft}
                     onChange={(event) => setDraft(event.target.value)}
                     placeholder={uiContent.messagePlaceholder}
+                    disabled={sending}
                   />
+
                   <button
                     type="submit"
                     className="btn-primary"

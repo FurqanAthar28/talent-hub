@@ -1,10 +1,23 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+
 from profiles.constants import MAX_CV_FILE_SIZE_BYTES
 from profiles.models import Profile
 from profiles.pdf_metadata import apply_cv_pdf_metadata
 from profiles.url_utils import normalize_url
+
 from .models import AdminActionLog
+
+
+VALIDATION_MESSAGES = {
+    "email_exists": "Email already exists",
+    "pdf_only": "Only PDF files are accepted",
+    "cv_too_large": "CV file must be less than 5MB",
+    "cv_required": "CV file is required",
+    "linkedin_required": "LinkedIn profile is required",
+    "company_name_required": "Company name is required",
+    "otp_digits_only": "OTP must contain only numbers",
+}
 
 
 def get_user_profile(user):
@@ -12,6 +25,53 @@ def get_user_profile(user):
         return user.profile
     except Profile.DoesNotExist:
         return None
+
+
+def split_full_name(full_name):
+    name_parts = full_name.strip().split(" ", 1)
+    first_name = name_parts[0]
+    last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+    return first_name, last_name
+
+
+def create_user_account(full_name, email, password):
+    first_name, last_name = split_full_name(full_name)
+
+    return User.objects.create_user(
+        username=email,
+        email=email,
+        password=password,
+        first_name=first_name,
+        last_name=last_name,
+    )
+
+
+def prepare_cv_file(cv_file, full_name):
+    if not cv_file:
+        return None
+
+    return apply_cv_pdf_metadata(cv_file, full_name)
+
+
+def create_user_profile(user, validated_data, cv_file):
+    role = validated_data["role"]
+
+    return Profile.objects.create(
+        user=user,
+        role=role,
+        linkedin_url=validated_data.get("linkedinUrl", ""),
+        company_name=validated_data.get("companyName", ""),
+        company_website=validated_data.get("companyWebsite", ""),
+        company_location=validated_data.get("companyLocation", ""),
+        hiring_title=validated_data.get("hiringTitle", ""),
+        recruiter_verification_status=(
+            Profile.RECRUITER_VERIFICATION_PENDING
+            if role == Profile.ROLE_RECRUITER
+            else Profile.RECRUITER_VERIFICATION_APPROVED
+        ),
+        cv_file=cv_file,
+    )
 
 
 class SignupSerializer(serializers.Serializer):
@@ -32,16 +92,16 @@ class SignupSerializer(serializers.Serializer):
         email = value.lower()
 
         if User.objects.filter(email=email).exists():
-            raise serializers.ValidationError("Email already exists")
+            raise serializers.ValidationError(VALIDATION_MESSAGES["email_exists"])
 
         return email
 
     def validate_cvFile(self, value):
         if value.content_type != "application/pdf":
-            raise serializers.ValidationError("Only PDF files are accepted")
+            raise serializers.ValidationError(VALIDATION_MESSAGES["pdf_only"])
 
         if value.size > MAX_CV_FILE_SIZE_BYTES:
-            raise serializers.ValidationError("CV file must be less than 5MB")
+            raise serializers.ValidationError(VALIDATION_MESSAGES["cv_too_large"])
 
         return value
 
@@ -55,15 +115,19 @@ class SignupSerializer(serializers.Serializer):
         role = attrs.get("role", Profile.ROLE_CANDIDATE)
 
         if role == Profile.ROLE_CANDIDATE and not attrs.get("cvFile"):
-            raise serializers.ValidationError({"cvFile": "CV file is required"})
+            raise serializers.ValidationError(
+                {"cvFile": VALIDATION_MESSAGES["cv_required"]}
+            )
 
         if role == Profile.ROLE_CANDIDATE and not attrs.get("linkedinUrl", "").strip():
             raise serializers.ValidationError(
-                {"linkedinUrl": "LinkedIn profile is required"}
+                {"linkedinUrl": VALIDATION_MESSAGES["linkedin_required"]}
             )
 
         if role == Profile.ROLE_RECRUITER and not attrs.get("companyName", "").strip():
-            raise serializers.ValidationError({"companyName": "Company name is required"})
+            raise serializers.ValidationError(
+                {"companyName": VALIDATION_MESSAGES["company_name_required"]}
+            )
 
         return attrs
 
@@ -71,37 +135,10 @@ class SignupSerializer(serializers.Serializer):
         full_name = validated_data["fullName"].strip()
         email = validated_data["email"]
         password = validated_data["password"]
-        role = validated_data["role"]
-        cv_file = validated_data.get("cvFile")
 
-        name_parts = full_name.split(" ", 1)
-        first_name = name_parts[0]
-        last_name = name_parts[1] if len(name_parts) > 1 else ""
-
-        user = User.objects.create_user(
-            username=email,
-            email=email,
-            password=password,
-            first_name=first_name,
-            last_name=last_name,
-        )
-
-        if cv_file:
-            cv_file = apply_cv_pdf_metadata(cv_file, full_name)
-
-        Profile.objects.create(
-            user=user,
-            role=role,
-            linkedin_url=validated_data.get("linkedinUrl", ""),
-            company_name=validated_data.get("companyName", ""),
-            company_website=validated_data.get("companyWebsite", ""),
-            company_location=validated_data.get("companyLocation", ""),
-            hiring_title=validated_data.get("hiringTitle", ""),
-            recruiter_verification_status=Profile.RECRUITER_VERIFICATION_PENDING
-            if role == Profile.ROLE_RECRUITER
-            else Profile.RECRUITER_VERIFICATION_APPROVED,
-            cv_file=cv_file,
-        )
+        user = create_user_account(full_name, email, password)
+        cv_file = prepare_cv_file(validated_data.get("cvFile"), full_name)
+        create_user_profile(user, validated_data, cv_file)
 
         return user
 
@@ -131,7 +168,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
     def validate_otp(self, value):
         if not value.isdigit():
-            raise serializers.ValidationError("OTP must contain only numbers")
+            raise serializers.ValidationError(VALIDATION_MESSAGES["otp_digits_only"])
 
         return value
 
@@ -152,7 +189,7 @@ class EmailVerificationConfirmSerializer(serializers.Serializer):
 
     def validate_otp(self, value):
         if not value.isdigit():
-            raise serializers.ValidationError("OTP must contain only numbers")
+            raise serializers.ValidationError(VALIDATION_MESSAGES["otp_digits_only"])
 
         return value
 
