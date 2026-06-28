@@ -8,6 +8,7 @@ import ProjectsSection from "../../components/ProjectsSection"; // This line is 
 import DashboardActivityCard from "./components/DashboardActivity";
 import SkillsSection from "../../components/SkillsSection";
 import ExperienceSection from "../../components/ExperienceSection";
+import DashboardContactModal from "./components/DashboardContactModal";
 import DashboardStats from "./components/DashboardStats";
 import { Button } from "../../components/ui/button";
 import {
@@ -24,12 +25,15 @@ import {
   updateDashboardOpenToWork,
 } from "../../services/dashboard";
 import { buildMediaUrl } from "../../utils/media";
-import type { DashboardActivity, DashboardUser } from "../../../types/dashboard";
+import type {
+  DashboardActivity,
+  DashboardUser,
+} from "../../../types/dashboard";
 
 function formatUiText(template: string, values: Record<string, string>) {
   return Object.entries(values).reduce(
     (text, [key, value]) => text.replaceAll(`{${key}}`, value),
-    template
+    template,
   );
 }
 
@@ -136,7 +140,10 @@ export default function DashboardPage() {
     setUser((prev) => (prev ? { ...prev, openToWork: newStatus } : prev));
 
     try {
-      const updatedProfile = await updateDashboardOpenToWork(uiContent, newStatus);
+      const updatedProfile = await updateDashboardOpenToWork(
+        uiContent,
+        newStatus,
+      );
 
       setUser((prev) => {
         if (!prev) return prev;
@@ -151,7 +158,9 @@ export default function DashboardPage() {
       });
     } catch (error) {
       console.error("Failed to update open-to-work status:", error);
-      setUser((prev) => (prev ? { ...prev, openToWork: previousStatus } : prev));
+      setUser((prev) =>
+        prev ? { ...prev, openToWork: previousStatus } : prev,
+      );
       setToggleError(uiContent.dashboardOpenToWorkUpdateFailed);
     } finally {
       setToggleSaving(false);
@@ -242,7 +251,7 @@ export default function DashboardPage() {
                   : isRecruiter
                     ? uiContent.recruiterDashboardIntro
                     : uiContent.candidateDashboardIntro,
-                { name: user.fullName }
+                { name: user.fullName },
               )}
             </p>
           </div>
@@ -309,7 +318,9 @@ export default function DashboardPage() {
                   <>
                     <div className="flex-between mb-2">
                       <span className="muted">{uiContent.profileViewers}</span>
-                      <span className="font-semibold">{user.profileViewers}</span>
+                      <span className="font-semibold">
+                        {user.profileViewers}
+                      </span>
                     </div>
 
                     <Link
@@ -406,7 +417,9 @@ export default function DashboardPage() {
                   {isCandidate && (
                     <button
                       type="button"
-                      className={user.openToWork ? "btn-primary" : "btn-outline"}
+                      className={
+                        user.openToWork ? "btn-primary" : "btn-outline"
+                      }
                       onClick={toggleOpenToWork}
                       disabled={toggleSaving}
                     >
@@ -418,12 +431,18 @@ export default function DashboardPage() {
                     </button>
                   )}
 
-                  <Link href={uiContent.routeProfileEdit} className="btn-outline">
+                  <Link
+                    href={uiContent.routeProfileEdit}
+                    className="btn-outline"
+                  >
                     {uiContent.editProfile}
                   </Link>
 
                   {isCandidate && (
-                    <Link href={uiContent.routeConnections} className="btn-outline">
+                    <Link
+                      href={uiContent.routeConnections}
+                      className="btn-outline"
+                    >
                       {uiContent.myNetwork}
                     </Link>
                   )}
@@ -508,14 +527,15 @@ export default function DashboardPage() {
               </div>
             )}
 
-  {isCandidate && (
-  <DashboardActivityCard activities={activities} uiContent={uiContent} />
-)}                
+            {isCandidate && (
+              <DashboardActivityCard
+                activities={activities}
+                uiContent={uiContent}
+              />
+            )}
           </main>
 
           <aside>
-
-
             {isCandidate && (
               <div className="card">
                 <div className="card-header">
@@ -533,7 +553,10 @@ export default function DashboardPage() {
                       {uiContent.linkedin}
                     </a>
                   ) : (
-                    <Link href={uiContent.routeProfileEdit} className="quick-link">
+                    <Link
+                      href={uiContent.routeProfileEdit}
+                      className="quick-link"
+                    >
                       {uiContent.addLinkedin}
                     </Link>
                   )}
@@ -548,7 +571,10 @@ export default function DashboardPage() {
                       {uiContent.github}
                     </a>
                   ) : (
-                    <Link href={uiContent.routeProfileEdit} className="quick-link">
+                    <Link
+                      href={uiContent.routeProfileEdit}
+                      className="quick-link"
+                    >
                       {uiContent.addGithub}
                     </Link>
                   )}
@@ -563,7 +589,10 @@ export default function DashboardPage() {
                       {uiContent.portfolio}
                     </a>
                   ) : (
-                    <Link href={uiContent.routeProfileEdit} className="quick-link">
+                    <Link
+                      href={uiContent.routeProfileEdit}
+                      className="quick-link"
+                    >
                       {uiContent.addPortfolio}
                     </Link>
                   )}
@@ -578,7 +607,10 @@ export default function DashboardPage() {
                       {uiContent.viewCv}
                     </a>
                   ) : (
-                    <Link href={uiContent.routeProfileEdit} className="quick-link">
+                    <Link
+                      href={uiContent.routeProfileEdit}
+                      className="quick-link"
+                    >
                       {uiContent.uploadCv}
                     </Link>
                   )}
@@ -653,85 +685,11 @@ export default function DashboardPage() {
         </div>
 
         {showContactModal && (
-          <div
-            className="modal-overlay"
-            onClick={() => setShowContactModal(false)}
-          >
-            <div
-              className="modal-content"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="modal-header">
-                <h3>{uiContent.contactInfo}</h3>
-
-                <button
-                  type="button"
-                  className="modal-close"
-                  onClick={() => setShowContactModal(false)}
-                >
-                  x
-                </button>
-              </div>
-
-              <div className="modal-body">
-                <div className="contact-item">
-                  <span className="contact-label">{uiContent.email}</span>
-                  <a href={`mailto:${user.email}`} className="contact-value">
-                    {user.email}
-                  </a>
-                </div>
-
-                {user.linkedinUrl && (
-                  <div className="contact-item">
-                    <span className="contact-label">{uiContent.linkedin}</span>
-                    <a
-                      href={user.linkedinUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="contact-value"
-                    >
-                      {user.linkedinUrl.replace("https://", "")}
-                    </a>
-                  </div>
-                )}
-
-                {user.githubUrl && (
-                  <div className="contact-item">
-                    <span className="contact-label">{uiContent.github}</span>
-                    <a
-                      href={user.githubUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="contact-value"
-                    >
-                      {user.githubUrl.replace("https://", "")}
-                    </a>
-                  </div>
-                )}
-
-                {user.portfolioUrl && (
-                  <div className="contact-item">
-                    <span className="contact-label">{uiContent.portfolio}</span>
-                    <a
-                      href={user.portfolioUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="contact-value"
-                    >
-                      {user.portfolioUrl.replace("https://", "")}
-                    </a>
-                  </div>
-                )}
-
-                {user.location && (
-                  <div className="contact-item">
-                    <span className="contact-label">{uiContent.location}</span>
-                    <span className="contact-value">{user.location}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <DashboardContactModal
+            user={user}
+            uiContent={uiContent}
+            onClose={() => setShowContactModal(false)}
+          />
         )}
       </div>
     </div>
