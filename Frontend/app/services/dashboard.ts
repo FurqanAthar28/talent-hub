@@ -1,93 +1,45 @@
 import { apiFetch } from "../api/client";
-import type { UiContent } from "../api/ui-content";
-import type { DashboardActivity, DashboardUser } from "../../types/dashboard";
 
-type DashboardProfileResponse = Omit<
-  DashboardUser,
-  | "id"
-  | "role"
-  | "recruiterVerificationStatus"
-  | "recruiterVerificationNote"
-> & {
-  id: number | string;
-  role?: DashboardUser["role"];
-  recruiterVerificationStatus?: DashboardUser["recruiterVerificationStatus"];
-  recruiterVerificationNote?: string;
+export type DashboardData = {
+  fullName: string;
+  headline: string;
+  profileCompletion: number;
+  openToWork: boolean;
+  skillsCount: number;
+  projectsCount: number;
+  experiencesCount: number;
 };
 
-type DashboardProfileUpdateResponse = {
-  openToWork?: boolean;
-  profileCompletion?: number;
-  missingFields?: string[];
-};
-
-function mapDashboardUser(profileData: DashboardProfileResponse): DashboardUser {
-  return {
-    id: String(profileData.id),
-    role: profileData.role || "candidate",
-    fullName: profileData.fullName || "",
-    email: profileData.email || "",
-    headline: profileData.headline || "",
-    location: profileData.location || "",
-    bio: profileData.bio || "",
-    profileCompletion: profileData.profileCompletion || 0,
-    profileViewers: profileData.profileViewers || 0,
-    openToWork: profileData.openToWork || false,
-    linkedinUrl: profileData.linkedinUrl || "",
-    githubUrl: profileData.githubUrl || "",
-    portfolioUrl: profileData.portfolioUrl || "",
-    companyName: profileData.companyName || "",
-    companyWebsite: profileData.companyWebsite || "",
-    companyLocation: profileData.companyLocation || "",
-    hiringTitle: profileData.hiringTitle || "",
-    adminTitle: profileData.adminTitle || "",
-    recruiterVerificationStatus:
-      profileData.recruiterVerificationStatus || "approved",
-    recruiterVerificationNote: profileData.recruiterVerificationNote || "",
-    cvUrl: profileData.cvUrl || "",
-    missingFields: profileData.missingFields || [],
-    skillsCount: profileData.skillsCount || 0,
-    projectsCount: profileData.projectsCount || 0,
-    experiencesCount: profileData.experiencesCount || 0,
-    connectionsCount: profileData.connectionsCount || 0,
-  };
-}
-
-export async function fetchDashboardSummary(uiContent: UiContent) 
-{
-  const [profileResponse, activitiesResponse] = await Promise.all([
-    apiFetch(uiContent.apiProfileMe),
-    apiFetch(uiContent.apiProfileActivities),
-  ]);
-
-  if (!profileResponse.ok) {
-    throw new Error(uiContent.dashboardUnableToLoad);
-  }
-
-  const profileData = (await profileResponse.json()) as DashboardProfileResponse;
-  const activities = activitiesResponse.ok
-    ? ((await activitiesResponse.json()) as DashboardActivity[])
-    : [];
-
-  return {
-    user: mapDashboardUser(profileData),
-    activities,
-  };
-}
-
-export async function updateDashboardOpenToWork(
-  uiContent: UiContent,
-  openToWork: boolean
-) {
-  const response = await apiFetch(uiContent.apiProfileUpdate, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ openToWork }),
-  });
-
+async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    throw new Error(uiContent.dashboardOpenToWorkUpdateFailed);
+    throw new Error("Failed to load dashboard data.");
   }
 
-  return (await response.json()) as DashboardProfileUpdateResponse;
+  return response.json();
+}
+
+export async function getDashboardData(): Promise<DashboardData> {
+  const [profileRes, skillsRes, projectsRes, experiencesRes] =
+    await Promise.all([
+      apiFetch("/profiles/me/"),
+      apiFetch("/profiles/skills/"),
+      apiFetch("/profiles/projects/"),
+      apiFetch("/profiles/experiences/"),
+    ]);
+
+  const profile = await readJson<any>(profileRes);
+  const skills = await readJson<any[]>(skillsRes);
+  const projects = await readJson<any[]>(projectsRes);
+  const experiences = await readJson<any[]>(experiencesRes);
+
+  return {
+    fullName: profile.fullName || "User",
+    headline: profile.headline || "Manage your professional profile.",
+    profileCompletion:
+      profile.profileCompletion ?? profile.profile_completion ?? 0,
+    openToWork: profile.openToWork ?? profile.open_to_work ?? false,
+    skillsCount: skills.length,
+    projectsCount: projects.length,
+    experiencesCount: experiences.length,
+  };
 }
