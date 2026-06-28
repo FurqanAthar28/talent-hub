@@ -4,9 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../../../api/client";
+import { fetchUiContent, type UiContent } from "../../../api/ui-content";
+import { buildMediaUrl } from "../../../utils/media";
 
 type UserProfile = {
   id: string;
+  role: "candidate" | "recruiter" | "admin";
   fullName: string;
   email: string;
   headline: string;
@@ -15,6 +18,11 @@ type UserProfile = {
   linkedinUrl: string;
   githubUrl: string;
   portfolioUrl: string;
+  companyName: string;
+  companyWebsite: string;
+  companyLocation: string;
+  hiringTitle: string;
+  adminTitle: string;
   cvUrl: string;
 };
 
@@ -48,6 +56,12 @@ type ConnectionUser = {
   email: string;
 };
 
+type AuthenticatedUser = {
+  id: number;
+  isStaff: boolean;
+  role?: "candidate" | "recruiter" | "admin";
+};
+
 export default function UserProfilePage() {
   const router = useRouter();
   const params = useParams();
@@ -60,31 +74,38 @@ export default function UserProfilePage() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState("");
   const [connectLoading, setConnectLoading] = useState(false);
+  const [uiContent, setUiContent] = useState<UiContent>({});
+  const [viewerIsAdmin, setViewerIsAdmin] = useState(false);
 
   const loadProfile = useCallback(
     async (userId: string) => {
       setNotice("");
 
       try {
+        const uiContentData = await fetchUiContent();
+        setUiContent(uiContentData);
+
         const meRes = await apiFetch("/accounts/me");
-        const authenticatedUser = await meRes.json();
+        const authenticatedUser = (await meRes.json()) as AuthenticatedUser;
+        const currentViewerIsAdmin =
+          authenticatedUser.isStaff || authenticatedUser.role === "admin";
+        setViewerIsAdmin(currentViewerIsAdmin);
 
         if (String(userId) === String(authenticatedUser.id)) {
-          router.push("/profile");
+          router.push(uiContentData.routeProfile);
           return;
         }
 
-        const [profileRes, skillsRes, projectsRes, experiencesRes, connectionsRes] =
+        const [profileRes, skillsRes, projectsRes, experiencesRes] =
           await Promise.all([
             apiFetch(`/profiles/${userId}`),
             apiFetch(`/profiles/${userId}/skills`),
             apiFetch(`/profiles/${userId}/projects`),
             apiFetch(`/profiles/${userId}/experiences`),
-            apiFetch("/connections/my-connections"),
           ]);
 
         if (!profileRes.ok) {
-          router.push("/connections");
+          router.push(uiContentData.routeConnections);
           return;
         }
 
@@ -96,6 +117,7 @@ export default function UserProfilePage() {
 
         setUser({
           id: userId,
+          role: profile.role ?? "candidate",
           fullName: profile.fullName || "",
           email: profile.email || "",
           headline: profile.headline || "",
@@ -104,6 +126,11 @@ export default function UserProfilePage() {
           linkedinUrl: profile.linkedinUrl || "",
           githubUrl: profile.githubUrl || "",
           portfolioUrl: profile.portfolioUrl || "",
+          companyName: profile.companyName || "",
+          companyWebsite: profile.companyWebsite || "",
+          companyLocation: profile.companyLocation || "",
+          hiringTitle: profile.hiringTitle || "",
+          adminTitle: profile.adminTitle || "",
           cvUrl: profile.cvUrl || "",
         });
 
@@ -119,10 +146,13 @@ export default function UserProfilePage() {
           setExperiences(await experiencesRes.json());
         }
 
-        if (connectionsRes.ok) {
+        if (!currentViewerIsAdmin) {
+          const connectionsRes = await apiFetch("/connections/my-connections");
+          if (!connectionsRes.ok) return;
           setConnections(await connectionsRes.json());
         }
-      } catch {
+      } catch (error) {
+        console.error("Failed to load public profile:", error);
         setNotice("Unable to load this profile.");
       } finally {
         setLoading(false);
@@ -164,7 +194,8 @@ useEffect(() => {
       }
 
       setNotice("Connection request sent.");
-    } catch {
+    } catch (error) {
+      console.error("Failed to send profile connection request:", error);
       setNotice("Something went wrong while sending request.");
     } finally {
       setConnectLoading(false);
@@ -175,7 +206,7 @@ useEffect(() => {
     return (
       <div className="app-main">
         <div className="container">
-          <div className="text-center mt-4">Loading...</div>
+          <div className="text-center mt-4">{uiContent.loading}</div>
         </div>
       </div>
     );
@@ -192,15 +223,19 @@ useEffect(() => {
   }
 
   const userInitial = user.fullName?.charAt(0).toUpperCase() || "U";
-  const cvUrl = user.cvUrl
-    ? user.cvUrl.startsWith("http")
-      ? user.cvUrl
-      : `/api/backend/media/${user.cvUrl}`
-    : "";
+  const cvUrl = user.cvUrl ? buildMediaUrl(uiContent.apiMediaPrefix, user.cvUrl) : "";
 
   const isConnected = connections.some(
     (connection) => String(connection.id) === String(user.id)
   );
+  const isCandidate = user.role === "candidate";
+  const canUseConnections = !viewerIsAdmin && user.role !== "admin";
+  const roleLabel =
+    user.role === "admin"
+      ? uiContent.adminProfile
+      : user.role === "recruiter"
+        ? uiContent.recruiterProfile
+        : uiContent.candidateProfile;
 
   return (
     <div className="app-main">
@@ -220,8 +255,10 @@ useEffect(() => {
                 <h1>{user.fullName}</h1>
 
                 <p className="profile-headline">
-                  {user.headline || "Professional"}
+                  {user.headline || uiContent.professionalFallback}
                 </p>
+
+                <div className="role-badge">{roleLabel}</div>
 
                 <div className="profile-meta">
                   {user.location && <span>{user.location}</span>}
@@ -229,50 +266,71 @@ useEffect(() => {
 
                 {user.bio && <p className="mt-2">{user.bio}</p>}
 
-                <div className="mt-2 flex gap-2">
-                  {isConnected ? (
-                    <button type="button" className="btn-outline" disabled>
-                      Connected
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn-primary"
-                      onClick={handleConnect}
-                      disabled={connectLoading}
-                    >
-                      {connectLoading ? "Sending..." : "Connect"}
-                    </button>
-                  )}
+                {canUseConnections && (
+                  <div className="mt-2 flex gap-2">
+                    {isConnected ? (
+                      <button type="button" className="btn-outline" disabled>
+                        Connected
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={handleConnect}
+                        disabled={connectLoading}
+                      >
+                        {connectLoading ? "Sending..." : "Connect"}
+                      </button>
+                    )}
 
-                  <Link href="/connections" className="btn-outline">
-                    Back to Network
-                  </Link>
-                </div>
+                    <Link href="/connections" className="btn-outline">
+                      Back to Network
+                    </Link>
+                  </div>
+                )}
               </div>
 
               <div className="stats-grid">
-                <div className="stat-item">
-                  <span className="stat-value">{connections.length}</span>
-                  <span className="stat-label">Connections</span>
-                </div>
+                {isCandidate ? (
+                  <>
+                    {canUseConnections && (
+                      <div className="stat-item">
+                        <span className="stat-value">{connections.length}</span>
+                        <span className="stat-label">{uiContent.connections}</span>
+                      </div>
+                    )}
 
-                <div className="stat-item">
-                  <span className="stat-value">{projects.length}</span>
-                  <span className="stat-label">Projects</span>
-                </div>
+                    <div className="stat-item">
+                      <span className="stat-value">{projects.length}</span>
+                      <span className="stat-label">{uiContent.projects}</span>
+                    </div>
 
-                <div className="stat-item">
-                  <span className="stat-value">{skills.length}</span>
-                  <span className="stat-label">Skills</span>
-                </div>
+                    <div className="stat-item">
+                      <span className="stat-value">{skills.length}</span>
+                      <span className="stat-label">{uiContent.skills}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="stat-item">
+                    <span className="stat-value">
+                      {user.role === "recruiter"
+                        ? user.companyName || uiContent.recruiter
+                        : user.adminTitle || uiContent.adminRole}
+                    </span>
+                    <span className="stat-label">
+                      {user.role === "recruiter"
+                        ? uiContent.companyName
+                        : uiContent.adminTitle}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {experiences.length > 0 && (
+            {isCandidate && experiences.length > 0 && (
               <div className="card">
                 <div className="card-header">
-                  <h3>Experience</h3>
+                  <h3>{uiContent.experience}</h3>
                 </div>
 
                 <div className="card-body">
@@ -282,10 +340,10 @@ useEffect(() => {
                       <p className="text-sm">{experience.company}</p>
 
                       <p className="text-sm muted">
-                        {experience.start_date || "Start date"} -{" "}
+                        {experience.start_date || uiContent.startDateFallback} -{" "}
                         {experience.current
-                          ? "Present"
-                          : experience.end_date || "End date"}
+                          ? uiContent.present
+                          : experience.end_date || uiContent.endDateFallback}
                       </p>
 
                       {experience.location && (
@@ -303,10 +361,10 @@ useEffect(() => {
               </div>
             )}
 
-            {projects.length > 0 && (
+            {isCandidate && projects.length > 0 && (
               <div className="card">
                 <div className="card-header">
-                  <h3>Projects</h3>
+                  <h3>{uiContent.projects}</h3>
                 </div>
 
                 <div className="card-body">
@@ -343,13 +401,57 @@ useEffect(() => {
                 </div>
               </div>
             )}
+
+            {user.role === "recruiter" && (
+              <div className="card">
+                <div className="card-header">
+                  <h3>{uiContent.companyInformation}</h3>
+                </div>
+
+                <div className="card-body profile-detail-list">
+                  {user.companyName && (
+                    <div>
+                      <span>{uiContent.companyName}</span>
+                      <strong>{user.companyName}</strong>
+                    </div>
+                  )}
+                  {user.hiringTitle && (
+                    <div>
+                      <span>{uiContent.hiringTitle}</span>
+                      <strong>{user.hiringTitle}</strong>
+                    </div>
+                  )}
+                  {user.companyLocation && (
+                    <div>
+                      <span>{uiContent.companyLocation}</span>
+                      <strong>{user.companyLocation}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {user.role === "admin" && (
+              <div className="card">
+                <div className="card-header">
+                  <h3>{uiContent.adminProfile}</h3>
+                </div>
+
+                <div className="card-body profile-detail-list">
+                  <div>
+                    <span>{uiContent.adminTitle}</span>
+                    <strong>{user.adminTitle || uiContent.adminRole}</strong>
+                  </div>
+                </div>
+              </div>
+            )}
           </main>
 
           <aside>
-            {skills.length > 0 && (
+            {isCandidate && skills.length > 0 && (
               <div className="card">
                 <div className="card-header">
-                  <h3>Skills</h3>
+                  <h3>{uiContent.skills}</h3>
                 </div>
 
                 <div className="card-body">
@@ -366,51 +468,68 @@ useEffect(() => {
 
             <div className="card">
               <div className="card-header">
-                <h3>Contact</h3>
+                <h3>
+                  {user.role === "recruiter"
+                    ? uiContent.recruiterContact
+                    : user.role === "admin"
+                      ? uiContent.adminContact
+                      : uiContent.contact}
+                </h3>
               </div>
 
               <div className="card-body">
-                {user.linkedinUrl && (
+                {isCandidate && user.linkedinUrl && (
                   <a
                     href={user.linkedinUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex gap-2 mb-2 text-sm"
-                  >
-                    LinkedIn
+                >
+                    {uiContent.linkedin}
                   </a>
                 )}
 
-                {user.githubUrl && (
+                {isCandidate && user.githubUrl && (
                   <a
                     href={user.githubUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex gap-2 mb-2 text-sm"
-                  >
-                    GitHub
+                >
+                    {uiContent.github}
                   </a>
                 )}
 
-                {user.portfolioUrl && (
+                {isCandidate && user.portfolioUrl && (
                   <a
                     href={user.portfolioUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex gap-2 mb-2 text-sm"
-                  >
-                    Portfolio
+                >
+                    {uiContent.portfolio}
                   </a>
                 )}
 
-                {user.cvUrl && (
+                {user.role === "recruiter" && user.companyWebsite && (
+                  <a
+                    href={user.companyWebsite}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex gap-2 mb-2 text-sm"
+                  >
+                    {uiContent.companyWebsite}
+                  </a>
+                )}
+
+                {isCandidate && user.cvUrl && (
                   <a
                     href={cvUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex gap-2 text-sm"
                   >
-                    View CV
+                    {uiContent.viewCv}
                   </a>
                 )}
               </div>

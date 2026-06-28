@@ -8,42 +8,63 @@ from .models import Activity, Profile, ProfileView, Skill, Project, Experience
 from .serializers import (
     ActivitySerializer,
     ProfileSerializer,
+    ProfileUpdateSerializer,
     SkillSerializer,
     ProjectSerializer,
     ExperienceSerializer,
 )
 
 
-def parse_boolean(value):
-    if isinstance(value, bool):
-        return value
-
-    if isinstance(value, str):
-        return value.lower() in ["true", "1", "yes", "on"]
-
-    return False
-
-
-def validate_cv_file(cv_file):
-    if cv_file.content_type != "application/pdf":
-        return "Only PDF files are accepted"
-
-    max_size = 5 * 1024 * 1024
-
-    if cv_file.size > max_size:
-        return "CV file must be less than 5MB"
-
-    return ""
-
-
 def add_activity(profile, title):
     Activity.objects.create(profile=profile, title=title)
+
+
+def get_or_create_user_profile(user):
+    default_role = Profile.ROLE_ADMIN if user.is_staff else Profile.ROLE_CANDIDATE
+    profile, _created = Profile.objects.get_or_create(
+        user=user,
+        defaults={"role": default_role},
+    )
+
+    if user.is_staff and profile.role != Profile.ROLE_ADMIN:
+        profile.role = Profile.ROLE_ADMIN
+        profile.save(update_fields=["role"])
+
+    return profile
+
+
+def serializer_error_message(serializer):
+    field_labels = {
+        "fullName": "Full name",
+        "headline": "Headline",
+        "location": "Location",
+        "bio": "Bio",
+        "linkedinUrl": "LinkedIn URL",
+        "githubUrl": "GitHub URL",
+        "portfolioUrl": "Portfolio URL",
+        "companyName": "Company name",
+        "companyWebsite": "Company website URL",
+        "companyLocation": "Company location",
+        "hiringTitle": "Hiring title",
+        "adminTitle": "Admin title",
+        "cvFile": "CV",
+    }
+
+    for field, errors in serializer.errors.items():
+        label = field_labels.get(field, field)
+
+        if isinstance(errors, list) and errors:
+            return f"{label}: {errors[0]}"
+
+        return f"{label}: {errors}"
+
+    return "Invalid request"
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def my_profile_view(request):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
 
     serializer = ProfileSerializer(profile)
     return Response(serializer.data)
@@ -57,7 +78,7 @@ def user_profile_view(request, user_id):
     except User.DoesNotExist:
         return Response({"message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    profile, created = Profile.objects.get_or_create(user=user)
+    profile = get_or_create_user_profile(user)
     serializer = ProfileSerializer(profile)
     return Response(serializer.data)
 
@@ -81,7 +102,7 @@ def track_profile_view(request, user_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def activities_list_view(request):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
     activities = Activity.objects.filter(profile=profile)[:10]
     serializer = ActivitySerializer(activities, many=True)
     return Response(serializer.data)
@@ -129,44 +150,20 @@ def user_experiences_view(request, user_id):
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def update_my_profile_view(request):
-    user = request.user
-    profile, created = Profile.objects.get_or_create(user=user)
+    profile = get_or_create_user_profile(request.user)
+    serializer = ProfileUpdateSerializer(
+        profile,
+        data=request.data,
+        partial=True,
+    )
 
-    full_name = request.data.get("fullName")
+    if not serializer.is_valid():
+        return Response(
+            {"message": serializer_error_message(serializer)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
-    if full_name is not None:
-        full_name = full_name.strip()
-
-        if full_name:
-            name_parts = full_name.split(" ", 1)
-            user.first_name = name_parts[0]
-            user.last_name = name_parts[1] if len(name_parts) > 1 else ""
-            user.save()
-
-    profile.headline = request.data.get("headline", profile.headline)
-    profile.location = request.data.get("location", profile.location)
-    profile.bio = request.data.get("bio", profile.bio)
-    profile.linkedin_url = request.data.get("linkedinUrl", profile.linkedin_url)
-    profile.github_url = request.data.get("githubUrl", profile.github_url)
-    profile.portfolio_url = request.data.get("portfolioUrl", profile.portfolio_url)
-
-    if "openToWork" in request.data:
-        profile.open_to_work = parse_boolean(request.data.get("openToWork"))
-
-    cv_file = request.FILES.get("cvFile")
-
-    if cv_file:
-        cv_error = validate_cv_file(cv_file)
-
-        if cv_error:
-            return Response(
-                {"message": cv_error},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        profile.cv_file = cv_file
-
-    profile.save()
+    profile = serializer.save()
     add_activity(profile, "Updated profile information")
 
     serializer = ProfileSerializer(profile)
@@ -176,7 +173,7 @@ def update_my_profile_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def skills_list_view(request):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
 
     skills = Skill.objects.filter(profile=profile)
     serializer = SkillSerializer(skills, many=True)
@@ -186,17 +183,16 @@ def skills_list_view(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def skill_create_view(request):
-    name = request.data.get("name")
+    profile = get_or_create_user_profile(request.user)
+    serializer = SkillSerializer(data=request.data)
 
-    if not name:
+    if not serializer.is_valid():
         return Response(
-            {"message": "Skill name is required"},
+            {"message": serializer_error_message(serializer)},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    profile, created = Profile.objects.get_or_create(user=request.user)
-
-    skill = Skill.objects.create(profile=profile, name=name)
+    skill = serializer.save(profile=profile)
     add_activity(profile, f"Added skill: {skill.name}")
 
     serializer = SkillSerializer(skill)
@@ -206,7 +202,7 @@ def skill_create_view(request):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def skill_delete_view(request, skill_id):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
 
     try:
         skill = Skill.objects.get(id=skill_id, profile=profile)
@@ -222,7 +218,7 @@ def skill_delete_view(request, skill_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def projects_list_view(request):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
 
     projects = Project.objects.filter(profile=profile)
     serializer = ProjectSerializer(projects, many=True)
@@ -232,15 +228,16 @@ def projects_list_view(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def project_create_view(request):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
+    serializer = ProjectSerializer(data=request.data)
 
-    project = Project.objects.create(
-        profile=profile,
-        title=request.data.get("title", ""),
-        description=request.data.get("description", ""),
-        tech_stack=request.data.get("tech_stack", []),
-        github_url=request.data.get("github_url", ""),
-    )
+    if not serializer.is_valid():
+        return Response(
+            {"message": serializer_error_message(serializer)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    project = serializer.save(profile=profile)
     add_activity(profile, f"Added project: {project.title}")
 
     serializer = ProjectSerializer(project)
@@ -250,19 +247,22 @@ def project_create_view(request):
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def project_update_view(request, project_id):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
 
     try:
         project = Project.objects.get(id=project_id, profile=profile)
     except Project.DoesNotExist:
         return Response({"message": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    project.title = request.data.get("title", project.title)
-    project.description = request.data.get("description", project.description)
-    project.tech_stack = request.data.get("tech_stack", project.tech_stack)
-    project.github_url = request.data.get("github_url", project.github_url)
+    serializer = ProjectSerializer(project, data=request.data, partial=True)
 
-    project.save()
+    if not serializer.is_valid():
+        return Response(
+            {"message": serializer_error_message(serializer)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    project = serializer.save()
     add_activity(profile, f"Updated project: {project.title}")
 
     serializer = ProjectSerializer(project)
@@ -272,7 +272,7 @@ def project_update_view(request, project_id):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def project_delete_view(request, project_id):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
 
     try:
         project = Project.objects.get(id=project_id, profile=profile)
@@ -288,7 +288,7 @@ def project_delete_view(request, project_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def experiences_list_view(request):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
 
     experiences = Experience.objects.filter(profile=profile)
     serializer = ExperienceSerializer(experiences, many=True)
@@ -298,18 +298,16 @@ def experiences_list_view(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def experience_create_view(request):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
+    serializer = ExperienceSerializer(data=request.data)
 
-    experience = Experience.objects.create(
-        profile=profile,
-        title=request.data.get("title", ""),
-        company=request.data.get("company", ""),
-        location=request.data.get("location", ""),
-        start_date=request.data.get("start_date", ""),
-        end_date=request.data.get("end_date", ""),
-        current=request.data.get("current", False),
-        description=request.data.get("description", ""),
-    )
+    if not serializer.is_valid():
+        return Response(
+            {"message": serializer_error_message(serializer)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    experience = serializer.save(profile=profile)
     add_activity(profile, f"Added experience: {experience.title}")
 
     serializer = ExperienceSerializer(experience)
@@ -319,22 +317,22 @@ def experience_create_view(request):
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def experience_update_view(request, experience_id):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
 
     try:
         experience = Experience.objects.get(id=experience_id, profile=profile)
     except Experience.DoesNotExist:
         return Response({"message": "Experience not found"}, status=status.HTTP_404_NOT_FOUND)
 
-    experience.title = request.data.get("title", experience.title)
-    experience.company = request.data.get("company", experience.company)
-    experience.location = request.data.get("location", experience.location)
-    experience.start_date = request.data.get("start_date", experience.start_date)
-    experience.end_date = request.data.get("end_date", experience.end_date)
-    experience.current = request.data.get("current", experience.current)
-    experience.description = request.data.get("description", experience.description)
+    serializer = ExperienceSerializer(experience, data=request.data, partial=True)
 
-    experience.save()
+    if not serializer.is_valid():
+        return Response(
+            {"message": serializer_error_message(serializer)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    experience = serializer.save()
     add_activity(profile, f"Updated experience: {experience.title}")
 
     serializer = ExperienceSerializer(experience)
@@ -344,7 +342,7 @@ def experience_update_view(request, experience_id):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def experience_delete_view(request, experience_id):
-    profile, created = Profile.objects.get_or_create(user=request.user)
+    profile = get_or_create_user_profile(request.user)
 
     try:
         experience = Experience.objects.get(id=experience_id, profile=profile)

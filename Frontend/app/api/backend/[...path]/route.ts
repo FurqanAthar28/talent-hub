@@ -36,11 +36,21 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
   if (cookie) headers.set('cookie', cookie);
 
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
-  const upstream = await fetch(upstreamUrl, {
-    method: request.method,
-    headers,
-    body: hasBody ? await request.arrayBuffer() : undefined,
-  });
+  let upstream: Response;
+
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: request.method,
+      headers,
+      body: hasBody ? await request.arrayBuffer() : undefined,
+    });
+  } catch (error) {
+    console.error("Backend proxy request failed:", error);
+    return NextResponse.json(
+      { message: 'Unable to connect to backend server' },
+      { status: 502 }
+    );
+  }
 
   const content = await upstream.arrayBuffer();
   const response = new NextResponse(content, {

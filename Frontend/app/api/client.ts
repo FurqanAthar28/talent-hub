@@ -1,4 +1,13 @@
-export async function apiFetch(path: string, options?: RequestInit) {
+type ApiFetchOptions = {
+  redirectOnUnauthorized?: boolean;
+};
+
+export async function apiFetch(
+  path: string,
+  options?: RequestInit,
+  apiOptions: ApiFetchOptions = {}
+) {
+  const { redirectOnUnauthorized = true } = apiOptions;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
 
   const res = await fetch(`/api/backend${normalizedPath}`, {
@@ -6,9 +15,8 @@ export async function apiFetch(path: string, options?: RequestInit) {
     ...options,
   });
 
-  if (res.status === 401 || res.status === 403) {
+  if (redirectOnUnauthorized && (res.status === 401 || res.status === 403)) {
     window.location.replace("/signin");
-    throw new Error("Unauthorized");
   }
 
   return res;

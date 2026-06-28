@@ -14,13 +14,40 @@ def profile_cv_upload_path(instance, filename):
 
 
 class Profile(models.Model):
+    ROLE_CANDIDATE = "candidate"
+    ROLE_RECRUITER = "recruiter"
+    ROLE_ADMIN = "admin"
+    ROLE_CHOICES = (
+        (ROLE_CANDIDATE, "Candidate"),
+        (ROLE_RECRUITER, "Recruiter"),
+        (ROLE_ADMIN, "Admin"),
+    )
+    RECRUITER_VERIFICATION_PENDING = "pending"
+    RECRUITER_VERIFICATION_APPROVED = "approved"
+    RECRUITER_VERIFICATION_REJECTED = "rejected"
+    RECRUITER_VERIFICATION_CHOICES = (
+        (RECRUITER_VERIFICATION_PENDING, "Pending"),
+        (RECRUITER_VERIFICATION_APPROVED, "Approved"),
+        (RECRUITER_VERIFICATION_REJECTED, "Rejected"),
+    )
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
+    role = models.CharField(
+        max_length=20,
+        choices=ROLE_CHOICES,
+        default=ROLE_CANDIDATE,
+    )
     headline = models.CharField(max_length=255, blank=True)
     location = models.CharField(max_length=255, blank=True)
     bio = models.TextField(blank=True)
     linkedin_url = models.URLField(blank=True)
     github_url = models.URLField(blank=True)
     portfolio_url = models.URLField(blank=True)
+    company_name = models.CharField(max_length=255, blank=True)
+    company_website = models.URLField(blank=True)
+    company_location = models.CharField(max_length=255, blank=True)
+    hiring_title = models.CharField(max_length=255, blank=True)
+    admin_title = models.CharField(max_length=255, blank=True)
     cv_file = models.FileField(
         upload_to=profile_cv_upload_path,
         blank=True,
@@ -28,6 +55,13 @@ class Profile(models.Model):
     )
     profile_completion = models.IntegerField(default=0)
     open_to_work = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=True)
+    recruiter_verification_status = models.CharField(
+        max_length=20,
+        choices=RECRUITER_VERIFICATION_CHOICES,
+        default=RECRUITER_VERIFICATION_APPROVED,
+    )
+    recruiter_verification_note = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
         return self.user.get_full_name()

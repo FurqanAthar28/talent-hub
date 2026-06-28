@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../api/client";
+import { fetchUiContent, type UiContent } from "../../api/ui-content";
+import { buildMediaUrl } from "../../utils/media";
 
 type Experience = {
   id: number;
@@ -17,6 +19,7 @@ type Experience = {
 
 type User = {
   id: string;
+  role: "candidate" | "recruiter" | "admin";
   fullName: string;
   email: string;
   headline: string;
@@ -29,6 +32,11 @@ type User = {
   linkedinUrl: string;
   githubUrl: string;
   portfolioUrl: string;
+  companyName: string;
+  companyWebsite: string;
+  companyLocation: string;
+  hiringTitle: string;
+  adminTitle: string;
   profileCompletion?: number;
   profileViewers?: number;
   openToWork?: boolean;
@@ -41,20 +49,26 @@ export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null);
   const [experiences, setExperiences] = useState<Experience[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uiContent, setUiContent] = useState<UiContent>({});
 
   const loadUser = useCallback(async () => {
+    let signinRoute = "";
+
     try {
-      const [profileRes, experienceRes, skillsRes, projectsRes, connectionsRes] =
+      const uiContentData = await fetchUiContent();
+      signinRoute = uiContentData.routeSignin;
+      setUiContent(uiContentData);
+
+      const [profileRes, experienceRes, skillsRes, projectsRes] =
         await Promise.all([
-          apiFetch("/profiles/me"),
-          apiFetch("/profiles/experiences"),
-          apiFetch("/profiles/skills"),
-          apiFetch("/profiles/projects"),
-          apiFetch("/connections/my-connections"),
+          apiFetch(uiContentData.apiProfileMe),
+          apiFetch(uiContentData.apiProfileExperiences),
+          apiFetch(uiContentData.apiProfileSkills),
+          apiFetch(uiContentData.apiProfileProjects),
         ]);
 
       if (!profileRes.ok) {
-        router.push("/signin");
+        router.push(uiContentData.routeSignin);
         return;
       }
 
@@ -62,34 +76,40 @@ export default function ProfilePage() {
       const experienceData = experienceRes.ok ? await experienceRes.json() : [];
       const skillsData = skillsRes.ok ? await skillsRes.json() : [];
       const projectsData = projectsRes.ok ? await projectsRes.json() : [];
-      const connectionsData = connectionsRes.ok
-        ? await connectionsRes.json()
-        : [];
 
       const mappedUser: User = {
         id: String(profile.id),
-        fullName: profile.fullName || "",
-        email: profile.email || "",
-        headline: profile.headline || "",
-        location: profile.location || "",
-        bio: profile.bio || "",
+        role: profile.role ?? "candidate",
+        fullName: profile.fullName ?? "",
+        email: profile.email ?? "",
+        headline: profile.headline ?? "",
+        location: profile.location ?? "",
+        bio: profile.bio ?? "",
         skills: skillsData,
         projects: projectsData,
         experiences: experienceData,
-        connections: connectionsData,
-        linkedinUrl: profile.linkedinUrl || "",
-        githubUrl: profile.githubUrl || "",
-        portfolioUrl: profile.portfolioUrl || "",
-        profileCompletion: profile.profileCompletion || 0,
-        profileViewers: profile.profileViewers || 0,
-        openToWork: profile.openToWork || false,
-        cvUrl: profile.cvUrl || "",
+        connections: [],
+        linkedinUrl: profile.linkedinUrl ?? "",
+        githubUrl: profile.githubUrl ?? "",
+        portfolioUrl: profile.portfolioUrl ?? "",
+        companyName: profile.companyName ?? "",
+        companyWebsite: profile.companyWebsite ?? "",
+        companyLocation: profile.companyLocation ?? "",
+        hiringTitle: profile.hiringTitle ?? "",
+        adminTitle: profile.adminTitle ?? "",
+        profileCompletion: profile.profileCompletion ?? 0,
+        profileViewers: profile.profileViewers ?? 0,
+        openToWork: profile.openToWork ?? false,
+        cvUrl: profile.cvUrl ?? "",
       };
 
       setUser(mappedUser);
       setExperiences(experienceData);
-    } catch {
-      router.push("/signin");
+    } catch (error) {
+      console.error("Failed to load profile page data:", error);
+      if (signinRoute) {
+        router.push(signinRoute);
+      }
     } finally {
       setLoading(false);
     }
@@ -106,19 +126,22 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <div className="app-main">
-        <div className="container">Loading...</div>
+        <div className="container">{uiContent.loading}</div>
       </div>
     );
   }
 
   if (!user) return null;
 
-  const userInitial = user.fullName?.charAt(0).toUpperCase() || "U";
-  const cvUrl = user.cvUrl
-    ? user.cvUrl.startsWith("http")
-      ? user.cvUrl
-      : `/api/backend/media/${user.cvUrl}`
-    : "";
+  const userInitial =
+    user.fullName?.charAt(0).toUpperCase() || uiContent.avatarFallbackInitial;
+  const cvUrl = user.cvUrl ? buildMediaUrl(uiContent.apiMediaPrefix, user.cvUrl) : "";
+  const roleLabel =
+    user.role === "admin"
+      ? uiContent.adminProfile
+      : user.role === "recruiter"
+        ? uiContent.recruiterProfile
+        : uiContent.candidateProfile;
 
   return (
     <div className="app-main">
@@ -138,8 +161,10 @@ export default function ProfilePage() {
                     <h1 className="profile-name">{user.fullName}</h1>
 
                     <p className="profile-headline">
-                      {user.headline || "Professional"}
+                      {user.headline || uiContent.professionalFallback}
                     </p>
+
+                    <div className="role-badge">{roleLabel}</div>
 
                     {user.location && (
                       <p className="profile-location">{user.location}</p>
@@ -148,44 +173,82 @@ export default function ProfilePage() {
 
                   <button
                     type="button"
-                    onClick={() => router.push("/profile/edit")}
+                    onClick={() => router.push(uiContent.routeProfileEdit)}
                     className="btn-primary"
                   >
-                    Edit Profile
+                    {uiContent.editProfile}
                   </button>
                 </div>
 
                 {user.bio && <p className="profile-bio">{user.bio}</p>}
+
+                {user.role === "recruiter" && (
+                  <p className="profile-bio">{uiContent.recruiterProfileHint}</p>
+                )}
+
+                {user.role === "admin" && (
+                  <p className="profile-bio">{uiContent.adminProfileHint}</p>
+                )}
               </div>
 
-              <div className="stats-grid">
-                <div className="stat-item">
-                  <span className="stat-value">
-                    {user.connections?.length || 0}
-                  </span>
-                  <span className="stat-label">Connections</span>
-                </div>
+              {user.role === "candidate" ? (
+                <div className="stats-grid">
+                  <div className="stat-item">
+                    <span className="stat-value">
+                      {user.connections?.length || 0}
+                    </span>
+                    <span className="stat-label">{uiContent.connections}</span>
+                  </div>
 
-                <div className="stat-item">
-                  <span className="stat-value">
-                    {user.projects?.length || 0}
-                  </span>
-                  <span className="stat-label">Projects</span>
-                </div>
+                  <div className="stat-item">
+                    <span className="stat-value">
+                      {user.projects?.length || 0}
+                    </span>
+                    <span className="stat-label">{uiContent.projects}</span>
+                  </div>
 
-                <div className="stat-item">
-                  <span className="stat-value">
-                    {user.skills?.length || 0}
-                  </span>
-                  <span className="stat-label">Skills</span>
+                  <div className="stat-item">
+                    <span className="stat-value">
+                      {user.skills?.length || 0}
+                    </span>
+                    <span className="stat-label">{uiContent.skills}</span>
+                  </div>
                 </div>
-              </div>
+              ) : user.role === "recruiter" ? (
+                <div className="stats-grid">
+                  <div className="stat-item">
+                    <span className="stat-value">
+                      {user.companyName || uiContent.recruiter}
+                    </span>
+                    <span className="stat-label">{uiContent.companyName}</span>
+                  </div>
+
+                  <div className="stat-item">
+                    <span className="stat-value">{user.hiringTitle || "-"}</span>
+                    <span className="stat-label">{uiContent.hiringTitle}</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="stats-grid">
+                  <div className="stat-item">
+                    <span className="stat-value">
+                      {user.adminTitle || uiContent.adminRole}
+                    </span>
+                    <span className="stat-label">{uiContent.adminTitle}</span>
+                  </div>
+
+                  <div className="stat-item">
+                    <span className="stat-value">{uiContent.admin}</span>
+                    <span className="stat-label">{uiContent.adminDashboard}</span>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {experiences.length > 0 && (
+            {user.role === "candidate" && experiences.length > 0 && (
               <div className="card">
                 <div className="card-header">
-                  <h3>Experience</h3>
+                  <h3>{uiContent.experience}</h3>
                 </div>
 
                 <div className="card-body">
@@ -196,10 +259,10 @@ export default function ProfilePage() {
                       <p className="text-sm">{experience.company}</p>
 
                       <p className="text-sm muted">
-                        {experience.start_date || "Start date"} -{" "}
+                        {experience.start_date || uiContent.startDateFallback} -{" "}
                         {experience.current
-                          ? "Present"
-                          : experience.end_date || "End date"}
+                          ? uiContent.present
+                          : experience.end_date || uiContent.endDateFallback}
                       </p>
 
                       {experience.location && (
@@ -216,13 +279,57 @@ export default function ProfilePage() {
                 </div>
               </div>
             )}
+
+            {user.role === "recruiter" && (
+              <div className="card">
+                <div className="card-header">
+                  <h3>{uiContent.companyInformation}</h3>
+                </div>
+
+                <div className="card-body profile-detail-list">
+                  {user.companyName && (
+                    <div>
+                      <span>{uiContent.companyName}</span>
+                      <strong>{user.companyName}</strong>
+                    </div>
+                  )}
+                  {user.hiringTitle && (
+                    <div>
+                      <span>{uiContent.hiringTitle}</span>
+                      <strong>{user.hiringTitle}</strong>
+                    </div>
+                  )}
+                  {user.companyLocation && (
+                    <div>
+                      <span>{uiContent.companyLocation}</span>
+                      <strong>{user.companyLocation}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {user.role === "admin" && (
+              <div className="card">
+                <div className="card-header">
+                  <h3>{uiContent.adminProfile}</h3>
+                </div>
+
+                <div className="card-body profile-detail-list">
+                  <div>
+                    <span>{uiContent.adminTitle}</span>
+                    <strong>{user.adminTitle || uiContent.adminRole}</strong>
+                  </div>
+                </div>
+              </div>
+            )}
           </main>
 
           <aside>
-            {user.skills && user.skills.length > 0 && (
+            {user.role === "candidate" && user.skills && user.skills.length > 0 && (
               <div className="card">
                 <div className="card-header">
-                  <h3>Skills</h3>
+                  <h3>{uiContent.skills}</h3>
                 </div>
 
                 <div className="card-body">
@@ -239,49 +346,66 @@ export default function ProfilePage() {
 
             <div className="card">
               <div className="card-header">
-                <h3>Contact</h3>
+                <h3>
+                  {user.role === "recruiter"
+                    ? uiContent.recruiterContact
+                    : user.role === "admin"
+                      ? uiContent.adminContact
+                      : uiContent.contact}
+                </h3>
               </div>
 
               <div className="card-body">
-                {user.linkedinUrl && (
+                {user.role === "candidate" && user.linkedinUrl && (
                   <a
                     href={user.linkedinUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex gap-2 mb-2 text-sm"
                   >
-                    LinkedIn
+                    {uiContent.linkedin}
                   </a>
                 )}
 
-                {user.githubUrl && (
+                {user.role === "candidate" && user.githubUrl && (
                   <a
                     href={user.githubUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex gap-2 mb-2 text-sm"
                   >
-                    GitHub
+                    {uiContent.github}
                   </a>
                 )}
 
-                {user.portfolioUrl && (
+                {user.role === "candidate" && user.portfolioUrl && (
                   <a
                     href={user.portfolioUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex gap-2 text-sm"
                   >
-                    Portfolio
+                    {uiContent.portfolio}
+                  </a>
+                )}
+
+                {user.role === "recruiter" && user.companyWebsite && (
+                  <a
+                    href={user.companyWebsite}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex gap-2 text-sm"
+                  >
+                    {uiContent.companyWebsite}
                   </a>
                 )}
               </div>
             </div>
 
-            {user.cvUrl && (
+            {user.role === "candidate" && user.cvUrl && (
               <div className="card">
                 <div className="card-header">
-                  <h3>CV</h3>
+                  <h3>{uiContent.cv}</h3>
                 </div>
 
                 <div className="card-body">
@@ -291,7 +415,7 @@ export default function ProfilePage() {
                     rel="noopener noreferrer"
                     className="quick-link"
                   >
-                    View CV
+                    {uiContent.viewCv}
                   </a>
                 </div>
               </div>

@@ -2,44 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch } from "../../api/client";
-
-type RelationshipStatus =
-  | "none"
-  | "connected"
-  | "sent_pending"
-  | "sent_accepted"
-  | "sent_rejected"
-  | "received_pending"
-  | "received_accepted"
-  | "received_rejected";
-
-type ConnectionUser = {
-  id: number;
-  fullName: string;
-  email: string;
-  headline: string;
-  location: string;
-  connectionStatus: RelationshipStatus;
-  requestId: number | null;
-  requestStatus: "pending" | "accepted" | "rejected" | null;
-};
-
-type ConnectionRequest = {
-  id: number;
-  sender: number;
-  receiver: number;
-  sender_name: string;
-  sender_email: string;
-  sender_headline: string;
-  sender_location: string;
-  receiver_name: string;
-  receiver_email: string;
-  receiver_headline: string;
-  receiver_location: string;
-  status: "pending" | "accepted" | "rejected";
-  created_at: string;
-};
+import { fetchUiContent, type UiContent } from "../../api/ui-content";
+import {
+  fetchAuthenticatedUser,
+  fetchNetworkData,
+  readApiMessage,
+  sendConnectionInvite,
+  updateConnectionRequest,
+  type ConnectionRequest,
+  type ConnectionUser,
+  type RelationshipStatus,
+} from "../../services/connections";
+import { startConversation } from "../../services/messages";
 
 type Tab = "discover" | "connections" | "received" | "sent";
 
@@ -52,22 +26,25 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
-function getStatusLabel(status: RelationshipStatus | ConnectionRequest["status"]) {
+function getStatusLabel(
+  status: RelationshipStatus | ConnectionRequest["status"],
+  uiContent: UiContent
+) {
   const labels: Record<string, string> = {
-    none: "Not connected",
-    connected: "Connected",
-    pending: "Pending",
-    accepted: "Accepted",
-    rejected: "Declined",
-    sent_pending: "Request sent",
-    sent_accepted: "Accepted",
-    sent_rejected: "Declined",
-    received_pending: "Awaiting response",
-    received_accepted: "Accepted",
-    received_rejected: "Ignored",
+    none: uiContent.connectionStatusNotConnected,
+    connected: uiContent.connectionStatusConnected,
+    pending: uiContent.connectionStatusPending,
+    accepted: uiContent.connectionStatusAccepted,
+    rejected: uiContent.connectionStatusDeclined,
+    sent_pending: uiContent.connectionStatusRequestSent,
+    sent_accepted: uiContent.connectionStatusAccepted,
+    sent_rejected: uiContent.connectionStatusDeclined,
+    received_pending: uiContent.connectionStatusAwaitingResponse,
+    received_accepted: uiContent.connectionStatusAccepted,
+    received_rejected: uiContent.connectionStatusIgnored,
   };
 
-  return labels[status] || "Not connected";
+  return labels[status] || uiContent.connectionStatusNotConnected;
 }
 
 function getStatusClass(status: RelationshipStatus | ConnectionRequest["status"]) {
@@ -94,18 +71,10 @@ function getRequestDate(value: string) {
   }).format(new Date(value));
 }
 
-async function readResponseMessage(res: Response) {
-  try {
-    const data = await res.json();
-    return data.message || data.error || "Request failed.";
-  } catch {
-    return "Request failed.";
-  }
-}
-
 export default function ConnectionsPage() {
   const router = useRouter();
 
+  const [uiContent, setUiContent] = useState<UiContent>({});
   const [activeTab, setActiveTab] = useState<Tab>("discover");
   const [allUsers, setAllUsers] = useState<ConnectionUser[]>([]);
   const [connections, setConnections] = useState<ConnectionUser[]>([]);
@@ -123,29 +92,27 @@ export default function ConnectionsPage() {
     }
 
     try {
-      await apiFetch("/accounts/me");
+      const uiContentData = await fetchUiContent();
+      setUiContent(uiContentData);
+      const currentUser = await fetchAuthenticatedUser();
 
-      const [usersRes, receivedRes, sentRes, connectionsRes] = await Promise.all([
-        apiFetch("/connections/users"),
-        apiFetch("/connections/pending"),
-        apiFetch("/connections/sent"),
-        apiFetch("/connections/my-connections"),
-      ]);
-
-      if (!usersRes.ok || !receivedRes.ok || !sentRes.ok || !connectionsRes.ok) {
-        setNotice("Some network information could not be loaded. Please try again.");
+      if (currentUser.isStaff || currentUser.role === "admin") {
+        router.replace(uiContentData.routeAdmin);
+        return;
       }
 
-      if (usersRes.ok) setAllUsers(await usersRes.json());
-      if (receivedRes.ok) setReceivedRequests(await receivedRes.json());
-      if (sentRes.ok) setSentRequests(await sentRes.json());
-      if (connectionsRes.ok) setConnections(await connectionsRes.json());
-    } catch {
-      setNotice("Unable to load your network right now.");
+      const networkData = await fetchNetworkData();
+      setAllUsers(networkData.users);
+      setReceivedRequests(networkData.receivedRequests);
+      setSentRequests(networkData.sentRequests);
+      setConnections(networkData.connections);
+    } catch (error) {
+      console.error("Failed to load network data:", error);
+      setNotice(uiContent.connectionUnableToLoad);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router, uiContent.connectionUnableToLoad]);
 
 useEffect(() => {
   async function loadInitialData() {
@@ -161,21 +128,18 @@ useEffect(() => {
     setNotice("");
 
     try {
-      const res = await apiFetch("/connections/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ receiverId }),
-      });
+      const res = await sendConnectionInvite(receiverId);
 
       if (!res.ok) {
-        setNotice(await readResponseMessage(res));
+        setNotice(await readApiMessage(res, uiContent.connectionRequestFailed));
         return;
       }
 
-      setNotice("Connection request sent.");
+      setNotice(uiContent.connectionRequestSent);
       await loadData();
-    } catch {
-      setNotice("Unable to send connection request.");
+    } catch (error) {
+      console.error("Failed to send connection request:", error);
+      setNotice(uiContent.connectionUnableToSend);
     } finally {
       setActionLoading("");
     }
@@ -187,21 +151,38 @@ useEffect(() => {
     setNotice("");
 
     try {
-      const res = await apiFetch(`/connections/${action}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requestId }),
-      });
+      const res = await updateConnectionRequest(requestId, action);
 
       if (!res.ok) {
-        setNotice(await readResponseMessage(res));
+        setNotice(await readApiMessage(res, uiContent.connectionRequestFailed));
         return;
       }
 
-      setNotice(action === "accept" ? "Connection request accepted." : "Request ignored.");
+      setNotice(
+        action === "accept"
+          ? uiContent.connectionRequestAccepted
+          : uiContent.connectionRequestIgnored
+      );
       await loadData();
-    } catch {
-      setNotice("Unable to update connection request.");
+    } catch (error) {
+      console.error("Failed to update connection request:", error);
+      setNotice(uiContent.connectionUnableToUpdate);
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+  async function messageConnection(userId: number) {
+    const actionKey = `message-${userId}`;
+    setActionLoading(actionKey);
+    setNotice("");
+
+    try {
+      const conversation = await startConversation(uiContent, userId);
+      router.push(`${uiContent.routeMessages}?conversation=${conversation.id}`);
+    } catch (error) {
+      console.error("Failed to start message conversation:", error);
+      setNotice(error instanceof Error ? error.message : uiContent.messageStartFailed);
     } finally {
       setActionLoading("");
     }
@@ -215,9 +196,19 @@ useEffect(() => {
   function renderUserActions(user: ConnectionUser) {
     if (user.connectionStatus === "connected") {
       return (
-        <button type="button" className="btn-outline btn-sm" disabled>
-          Connected
-        </button>
+        <>
+          <button type="button" className="btn-outline btn-sm" disabled>
+            {uiContent.connectionStatusConnected}
+          </button>
+          <button
+            type="button"
+            className="btn-primary btn-sm"
+            onClick={() => messageConnection(user.id)}
+            disabled={actionLoading === `message-${user.id}`}
+          >
+            {uiContent.message}
+          </button>
+        </>
       );
     }
 
@@ -233,7 +224,9 @@ useEffect(() => {
             onClick={() => updateReceivedRequest(user.requestId as number, "accept")}
             disabled={actionLoading === acceptKey || actionLoading === rejectKey}
           >
-            {actionLoading === acceptKey ? "Accepting..." : "Accept"}
+            {actionLoading === acceptKey
+              ? uiContent.connectionAccepting
+              : uiContent.connectionAccept}
           </button>
 
           <button
@@ -242,7 +235,9 @@ useEffect(() => {
             onClick={() => updateReceivedRequest(user.requestId as number, "reject")}
             disabled={actionLoading === acceptKey || actionLoading === rejectKey}
           >
-            {actionLoading === rejectKey ? "Ignoring..." : "Ignore"}
+            {actionLoading === rejectKey
+              ? uiContent.connectionIgnoring
+              : uiContent.connectionIgnore}
           </button>
         </>
       );
@@ -265,7 +260,9 @@ useEffect(() => {
         onClick={() => sendConnectionRequest(user.id)}
         disabled={actionLoading === connectKey}
       >
-        {actionLoading === connectKey ? "Sending..." : "Connect"}
+        {actionLoading === connectKey
+          ? uiContent.connectionSending
+          : uiContent.connectionConnect}
       </button>
     );
   }
@@ -281,12 +278,12 @@ useEffect(() => {
               <div className="connection-name-row">
                 <div className="connection-name">{user.fullName}</div>
                 <span className={getStatusClass(user.connectionStatus)}>
-                  {getStatusLabel(user.connectionStatus)}
+                  {getStatusLabel(user.connectionStatus, uiContent)}
                 </span>
               </div>
 
               <div className="connection-headline">
-                {user.headline || "Professional"}
+                {user.headline || uiContent.professionalFallback}
               </div>
 
               {user.location && (
@@ -303,7 +300,7 @@ useEffect(() => {
               className="btn-outline btn-sm"
               onClick={() => router.push(`/profile/${user.id}`)}
             >
-              View
+              {uiContent.viewProfile}
             </button>
 
             {renderUserActions(user)}
@@ -332,19 +329,20 @@ useEffect(() => {
               <div className="connection-name-row">
                 <div className="connection-name">{name}</div>
                 <span className={getStatusClass(request.status)}>
-                  {getStatusLabel(request.status)}
+                  {getStatusLabel(request.status, uiContent)}
                 </span>
               </div>
 
               <div className="connection-headline">
-                {headline || "Professional"}
+                {headline || uiContent.professionalFallback}
               </div>
 
               {location && <div className="connection-location">{location}</div>}
               <div className="connection-location">{email}</div>
 
               <div className="request-meta">
-                {isReceived ? "Received" : "Sent"} {getRequestDate(request.created_at)}
+                {isReceived ? uiContent.connectionReceived : uiContent.connectionSent}{" "}
+                {getRequestDate(request.created_at)}
               </div>
             </div>
           </div>
@@ -358,7 +356,9 @@ useEffect(() => {
                   onClick={() => updateReceivedRequest(request.id, "accept")}
                   disabled={actionLoading === acceptKey || actionLoading === rejectKey}
                 >
-                  {actionLoading === acceptKey ? "Accepting..." : "Accept"}
+                  {actionLoading === acceptKey
+                    ? uiContent.connectionAccepting
+                    : uiContent.connectionAccept}
                 </button>
 
                 <button
@@ -367,12 +367,14 @@ useEffect(() => {
                   onClick={() => updateReceivedRequest(request.id, "reject")}
                   disabled={actionLoading === acceptKey || actionLoading === rejectKey}
                 >
-                  {actionLoading === rejectKey ? "Ignoring..." : "Ignore"}
+                  {actionLoading === rejectKey
+                    ? uiContent.connectionIgnoring
+                    : uiContent.connectionIgnore}
                 </button>
               </>
             ) : (
               <button type="button" className="btn-outline btn-sm" disabled>
-                {getStatusLabel(request.status)}
+                {getStatusLabel(request.status, uiContent)}
               </button>
             )}
           </div>
@@ -392,7 +394,7 @@ useEffect(() => {
   if (loading) {
     return (
       <div className="app-main">
-        <div className="container">Loading your network...</div>
+        <div className="container">{uiContent.connectionLoading}</div>
       </div>
     );
   }
@@ -402,8 +404,8 @@ useEffect(() => {
       <div className="container">
         <div className="network-header">
           <div>
-            <h1 className="text-lg mb-1">My Network</h1>
-            <p className="muted">Manage connection requests and discover professionals.</p>
+            <h1 className="text-lg mb-1">{uiContent.myNetwork}</h1>
+            <p className="muted">{uiContent.connectionIntro}</p>
           </div>
         </div>
 
@@ -415,7 +417,7 @@ useEffect(() => {
             className={`tab-btn ${activeTab === "discover" ? "active" : ""}`}
             onClick={() => setActiveTab("discover")}
           >
-            Discover
+            {uiContent.connectionDiscover}
           </button>
 
           <button
@@ -423,7 +425,7 @@ useEffect(() => {
             className={`tab-btn ${activeTab === "connections" ? "active" : ""}`}
             onClick={() => setActiveTab("connections")}
           >
-            Connections ({connections.length})
+            {uiContent.connections} ({connections.length})
           </button>
 
           <button
@@ -431,7 +433,7 @@ useEffect(() => {
             className={`tab-btn ${activeTab === "received" ? "active" : ""}`}
             onClick={() => setActiveTab("received")}
           >
-            Received ({receivedRequests.length})
+            {uiContent.connectionReceived} ({receivedRequests.length})
           </button>
 
           <button
@@ -439,7 +441,7 @@ useEffect(() => {
             className={`tab-btn ${activeTab === "sent" ? "active" : ""}`}
             onClick={() => setActiveTab("sent")}
           >
-            Sent ({sentRequests.length})
+            {uiContent.connectionSent} ({sentRequests.length})
           </button>
         </div>
 
@@ -449,7 +451,7 @@ useEffect(() => {
               <div className="card-body">
                 <input
                   type="text"
-                  placeholder="Search by name, email, headline, or location..."
+                  placeholder={uiContent.connectionSearchPlaceholder}
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
                   className="search-input"
@@ -459,7 +461,7 @@ useEffect(() => {
 
             <div className="connections-grid">
               {discoverList.length === 0
-                ? renderEmptyState("No professionals match your search.")
+                ? renderEmptyState(uiContent.connectionNoSearchResults)
                 : discoverList.map((user) => renderUserCard(user))}
             </div>
           </>
@@ -468,7 +470,7 @@ useEffect(() => {
         {activeTab === "connections" && (
           <div className="connections-grid">
             {connections.length === 0
-              ? renderEmptyState("You do not have any connections yet.")
+              ? renderEmptyState(uiContent.connectionNoConnections)
               : connections.map((user) => renderUserCard(user))}
           </div>
         )}
@@ -476,7 +478,7 @@ useEffect(() => {
         {activeTab === "received" && (
           <div className="connections-grid">
             {receivedRequests.length === 0
-              ? renderEmptyState("No received requests yet.")
+              ? renderEmptyState(uiContent.connectionNoReceivedRequests)
               : receivedRequests.map((request) => renderRequestCard(request, "received"))}
           </div>
         )}
@@ -484,7 +486,7 @@ useEffect(() => {
         {activeTab === "sent" && (
           <div className="connections-grid">
             {sentRequests.length === 0
-              ? renderEmptyState("No sent requests yet.")
+              ? renderEmptyState(uiContent.connectionNoSentRequests)
               : sentRequests.map((request) => renderRequestCard(request, "sent"))}
           </div>
         )}

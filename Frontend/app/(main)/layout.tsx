@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { apiFetch } from "../api/client";
+import { fetchUiContent, type UiContent } from "../api/ui-content";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -10,6 +11,7 @@ type AuthUser = {
   email: string;
   username: string;
   fullName: string;
+  isStaff: boolean;
 };
 
 export default function MainLayout({
@@ -22,22 +24,32 @@ export default function MainLayout({
 
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [uiContent, setUiContent] = useState<UiContent>({});
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     async function checkUser() {
+      let signinRoute = "";
+
       try {
-        const res = await apiFetch("/accounts/me");
+        const uiContentData = await fetchUiContent();
+        signinRoute = uiContentData.routeSignin;
+        setUiContent(uiContentData);
+
+        const res = await apiFetch(uiContentData.apiAccountsMe);
 
         if (!res.ok) {
-          router.push("/signin");
+          router.push(uiContentData.routeSignin);
           return;
         }
 
         const data = await res.json();
         setUser(data);
-      } catch {
-        router.push("/signin");
+      } catch (error) {
+        console.error("Failed to load authenticated user:", error);
+        if (signinRoute) {
+          router.push(signinRoute);
+        }
       } finally {
         setLoading(false);
       }
@@ -50,9 +62,11 @@ export default function MainLayout({
     setLoggingOut(true);
 
     try {
-      await apiFetch("/accounts/logout", { method: "POST" });
+      await apiFetch(uiContent.apiAccountsLogout, { method: "POST" });
+    } catch (error) {
+      console.error("Failed to log out:", error);
     } finally {
-      router.push("/signin");
+      router.push(uiContent.routeSignin);
     }
   }
 
@@ -64,38 +78,59 @@ export default function MainLayout({
       <header className="app-header">
         <div className="container">
           <div className="app-header-inner">
-            <Link href="/dashboard" className="brand">
-              ProfessionalHub
+            <Link href={uiContent.routeDashboard} className="brand">
+              {uiContent.appName}
             </Link>
 
             <nav className="nav">
               <Link
-                href="/dashboard"
-                className={pathname === "/dashboard" ? "active" : ""}
+                href={uiContent.routeDashboard}
+                className={pathname === uiContent.routeDashboard ? "active" : ""}
               >
-                Home
+                {uiContent.home}
               </Link>
 
               <Link
-                href="/profile"
-                className={pathname === "/profile" ? "active" : ""}
+                href={uiContent.routeProfile}
+                className={pathname === uiContent.routeProfile ? "active" : ""}
               >
-                Profile
+                {uiContent.profile}
               </Link>
 
-              <Link
-                href="/connections"
-                className={pathname === "/connections" ? "active" : ""}
-              >
-                My Network
-              </Link>
+              {!user.isStaff && (
+                <Link
+                  href={uiContent.routeConnections}
+                  className={pathname === uiContent.routeConnections ? "active" : ""}
+                >
+                  {uiContent.myNetwork}
+                </Link>
+              )}
+
+              {!user.isStaff && (
+                <Link
+                  href={uiContent.routeMessages}
+                  className={pathname === uiContent.routeMessages ? "active" : ""}
+                >
+                  {uiContent.messages}
+                </Link>
+              )}
+
+              {user.isStaff && (
+                <Link
+                  href={uiContent.routeAdmin}
+                  className={pathname === uiContent.routeAdmin ? "active" : ""}
+                >
+                  {uiContent.admin}
+                </Link>
+              )}
+
               <button
                 type="button"
                 onClick={handleLogout}
                 className="btn-outline"
                 disabled={loggingOut}
               >
-                {loggingOut ? "Logging out..." : "Logout"}
+                {loggingOut ? uiContent.loggingOut : uiContent.logout}
               </button>
             </nav>
           </div>

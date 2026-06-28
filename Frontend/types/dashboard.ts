@@ -1,5 +1,6 @@
 export interface DashboardUser {
   id: string;
+  role: "candidate" | "recruiter" | "admin";
   fullName: string;
   email: string;
   headline: string;
@@ -11,6 +12,13 @@ export interface DashboardUser {
   linkedinUrl: string;
   githubUrl: string;
   portfolioUrl: string;
+  companyName: string;
+  companyWebsite: string;
+  companyLocation: string;
+  hiringTitle: string;
+  adminTitle: string;
+  recruiterVerificationStatus: "pending" | "approved" | "rejected";
+  recruiterVerificationNote: string;
   cvUrl: string;
   missingFields: string[];
   skillsCount: number;

@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from datetime import timedelta
+from django.core.exceptions import ImproperlyConfigured
+from django.core.management.utils import get_random_secret_key
 from dotenv import load_dotenv
 import os
 from pathlib import Path
@@ -19,22 +21,70 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
+
+def env_bool(name, default=None):
+    value = os.environ.get(name)
+
+    if value is None:
+        if default is None:
+            raise ImproperlyConfigured(f"Missing required environment variable: {name}")
+
+        return default
+
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name, default=None):
+    value = os.environ.get(name)
+
+    if value is None:
+        if default is None:
+            raise ImproperlyConfigured(f"Missing required environment variable: {name}")
+
+        return default
+
+    return int(value)
+
+
+def env_list(name, default=None):
+    value = os.environ.get(name)
+
+    if value is None:
+        if default is None:
+            raise ImproperlyConfigured(f"Missing required environment variable: {name}")
+
+        return default
+
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def env_required(name):
+    value = os.environ.get(name)
+
+    if not value:
+        raise ImproperlyConfigured(f"Missing required environment variable: {name}")
+
+    return value
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
-    "DJANGO_SECRET_KEY",
-    "django-insecure-7u9aahc13fl+=rnsl&wq!bex*vh*#vy$sms)&ex7k^a-c1wr#l",
-)
-
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
+DEBUG = env_bool("DJANGO_DEBUG", True)
 
-ALLOWED_HOSTS = os.environ.get(
+# SECURITY WARNING: keep the secret key used in production secret.
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY")
+
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured("DJANGO_SECRET_KEY is required when DEBUG is False")
+
+    SECRET_KEY = get_random_secret_key()
+
+ALLOWED_HOSTS = env_list(
     "DJANGO_ALLOWED_HOSTS",
-    "localhost,127.0.0.1",
-).split(",")
+    ["localhost", "127.0.0.1"] if DEBUG else None,
+)
 
 
 # Application definition
@@ -52,6 +102,7 @@ INSTALLED_APPS = [
     'profiles',
     'connections',
     "rest_framework_simplejwt.token_blacklist",
+    'app_config',
 ]
 
 MIDDLEWARE = [
@@ -91,11 +142,21 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("DB_NAME", "talent_hub"),
-        "USER": os.environ.get("DB_USER", "postgres"),
-        "PASSWORD": os.environ.get("DB_PASSWORD", ""),
-        "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
-        "PORT": os.environ.get("DB_PORT", "5432"),
+        "NAME": os.environ.get("DB_NAME", "talent_hub")
+        if DEBUG
+        else env_required("DB_NAME"),
+        "USER": os.environ.get("DB_USER", "postgres")
+        if DEBUG
+        else env_required("DB_USER"),
+        "PASSWORD": os.environ.get("DB_PASSWORD", "")
+        if DEBUG
+        else env_required("DB_PASSWORD"),
+        "HOST": os.environ.get("DB_HOST", "127.0.0.1")
+        if DEBUG
+        else env_required("DB_HOST"),
+        "PORT": os.environ.get("DB_PORT", "5432")
+        if DEBUG
+        else env_required("DB_PORT"),
     }
 }
 
@@ -137,14 +198,14 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = os.environ.get(
+CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000",
-).split(",")
-CSRF_TRUSTED_ORIGINS = os.environ.get(
+    ["http://localhost:3000", "http://127.0.0.1:3000"] if DEBUG else None,
+)
+CSRF_TRUSTED_ORIGINS = env_list(
     "CSRF_TRUSTED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000",
-).split(",")
+    ["http://localhost:3000", "http://127.0.0.1:3000"] if DEBUG else None,
+)
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
@@ -164,10 +225,43 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 JWT_ACCESS_COOKIE = "access_token"
 JWT_REFRESH_COOKIE = "refresh_token"
-JWT_COOKIE_SECURE = not DEBUG
+JWT_ACCESS_COOKIE_MAX_AGE_SECONDS = env_int("JWT_ACCESS_COOKIE_MAX_AGE_SECONDS", 1800)
+JWT_REFRESH_COOKIE_MAX_AGE_SECONDS = env_int(
+    "JWT_REFRESH_COOKIE_MAX_AGE_SECONDS",
+    604800,
+)
+JWT_COOKIE_SECURE = env_bool("JWT_COOKIE_SECURE", not DEBUG)
 JWT_COOKIE_SAMESITE = os.environ.get("JWT_COOKIE_SAMESITE", "Lax")
 
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
-SESSION_COOKIES_HTTPONLY=True
+SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", not DEBUG)
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SECURE = env_bool("CSRF_COOKIE_SECURE", not DEBUG)
+
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.smtp.EmailBackend",
+)
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
+EMAIL_TIMEOUT = int(os.environ.get("EMAIL_TIMEOUT", "10"))
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "")
+PASSWORD_RESET_OTP_EXPIRY_MINUTES = int(
+    os.environ.get("PASSWORD_RESET_OTP_EXPIRY_MINUTES", "10")
+)
+PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = int(
+    os.environ.get("PASSWORD_RESET_RESEND_COOLDOWN_SECONDS", "60")
+)
+PASSWORD_RESET_MAX_ATTEMPTS = int(os.environ.get("PASSWORD_RESET_MAX_ATTEMPTS", "5"))
+EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES = int(
+    os.environ.get("EMAIL_VERIFICATION_OTP_EXPIRY_MINUTES", "10")
+)
+EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = int(
+    os.environ.get("EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS", "60")
+)
+EMAIL_VERIFICATION_MAX_ATTEMPTS = int(
+    os.environ.get("EMAIL_VERIFICATION_MAX_ATTEMPTS", "5")
+)
 
