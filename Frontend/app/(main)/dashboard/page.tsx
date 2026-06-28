@@ -7,6 +7,7 @@ import { fetchUiContent, type UiContent } from "../../api/ui-content";
 import ProjectsSection from "../../components/ProjectsSection";
 import SkillsSection from "../../components/SkillsSection";
 import ExperienceSection from "../../components/ExperienceSection";
+import DashboardStats from "./components/DashboardStats";
 import { Button } from "../../components/ui/button";
 import {
   DropdownMenu,
@@ -24,6 +25,71 @@ import {
 import { buildMediaUrl } from "../../utils/media";
 import type { DashboardActivity, DashboardUser } from "../../../types/dashboard";
 
+function formatUiText(template: string, values: Record<string, string>) {
+  return Object.entries(values).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, value),
+    template
+  );
+}
+
+function formatRelativeTime(value: string) {
+  const date = new Date(value);
+  const now = new Date();
+
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  const diffInMinutes = Math.floor(diffInSeconds / 60);
+  const diffInHours = Math.floor(diffInMinutes / 60);
+  const diffInDays = Math.floor(diffInHours / 24);
+
+  if (diffInSeconds < 60) return "Just now";
+  if (diffInMinutes < 60) return `${diffInMinutes} min ago`;
+  if (diffInHours < 24) return `${diffInHours} hr ago`;
+  if (diffInDays === 1) return "Yesterday";
+  if (diffInDays < 7) return `${diffInDays} days ago`;
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(date);
+}
+
+function DashboardLoadingState() {
+  return (
+    <div className="app-main">
+      <div className="container">
+        <div className="card">
+          <div className="card-body text-center">
+            <p className="muted">Loading dashboard...</p>
+          </div>
+        </div>
+
+        <div className="dashboard-stats mt-2">
+          <div className="dashboard-stat-card">
+            <h3>...</h3>
+            <p>Loading</p>
+          </div>
+
+          <div className="dashboard-stat-card">
+            <h3>...</h3>
+            <p>Loading</p>
+          </div>
+
+          <div className="dashboard-stat-card">
+            <h3>...</h3>
+            <p>Loading</p>
+          </div>
+
+          <div className="dashboard-stat-card">
+            <h3>...</h3>
+            <p>Loading</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
 
@@ -35,13 +101,6 @@ export default function DashboardPage() {
   const [uiContent, setUiContent] = useState<UiContent>({});
   const [toggleError, setToggleError] = useState("");
   const [toggleSaving, setToggleSaving] = useState(false);
-
-  function formatUiText(template: string, values: Record<string, string>) {
-    return Object.entries(values).reduce(
-      (text, [key, value]) => text.replaceAll(`{${key}}`, value),
-      template
-    );
-  }
 
   const loadProfileSummary = useCallback(async () => {
     setDashboardError("");
@@ -55,21 +114,15 @@ export default function DashboardPage() {
       setActivities(dashboardSummary.activities);
     } catch (error) {
       console.error("Failed to load dashboard profile summary:", error);
-      setDashboardError(
-        error instanceof Error ? error.message : ""
-      );
+      setDashboardError(error instanceof Error ? error.message : "");
     } finally {
       setLoading(false);
     }
   }, []);
 
-useEffect(() => {
-  async function loadInitialProfileSummary() {
-    await loadProfileSummary();
-  }
-
-  loadInitialProfileSummary();
-}, [loadProfileSummary]);
+  useEffect(() => {
+    loadProfileSummary();
+  }, [loadProfileSummary]);
 
   async function toggleOpenToWork() {
     if (!user || toggleSaving) return;
@@ -82,10 +135,7 @@ useEffect(() => {
     setUser((prev) => (prev ? { ...prev, openToWork: newStatus } : prev));
 
     try {
-      const updatedProfile = await updateDashboardOpenToWork(
-        uiContent,
-        newStatus
-      );
+      const updatedProfile = await updateDashboardOpenToWork(uiContent, newStatus);
 
       setUser((prev) => {
         if (!prev) return prev;
@@ -100,9 +150,7 @@ useEffect(() => {
       });
     } catch (error) {
       console.error("Failed to update open-to-work status:", error);
-      setUser((prev) =>
-        prev ? { ...prev, openToWork: previousStatus } : prev
-      );
+      setUser((prev) => (prev ? { ...prev, openToWork: previousStatus } : prev));
       setToggleError(uiContent.dashboardOpenToWorkUpdateFailed);
     } finally {
       setToggleSaving(false);
@@ -131,13 +179,7 @@ useEffect(() => {
   }, []);
 
   if (loading) {
-    return (
-      <div className="app-main">
-        <div className="container">
-          <div className="text-center mt-4">{uiContent.dashboardLoading}</div>
-        </div>
-      </div>
-    );
+    return <DashboardLoadingState />;
   }
 
   if (dashboardError) {
@@ -165,16 +207,20 @@ useEffect(() => {
 
   const userInitial =
     user.fullName?.charAt(0).toUpperCase() || uiContent.avatarFallbackInitial;
+
   const isCandidate = user.role === "candidate";
   const isRecruiter = user.role === "recruiter";
   const isAdmin = user.role === "admin";
+
   const roleLabel = isAdmin
     ? uiContent.adminProfile
     : isRecruiter
       ? uiContent.recruiterProfile
       : uiContent.candidateProfile;
 
-  const cvUrl = user.cvUrl ? buildMediaUrl(uiContent.apiMediaPrefix, user.cvUrl) : "";
+  const cvUrl = user.cvUrl
+    ? buildMediaUrl(uiContent.apiMediaPrefix, user.cvUrl)
+    : "";
 
   return (
     <div className="app-main">
@@ -216,7 +262,9 @@ useEffect(() => {
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
+
               <DropdownMenuSeparator />
+
               <DropdownMenuGroup>
                 {isCandidate && (
                   <DropdownMenuItem>
@@ -225,6 +273,7 @@ useEffect(() => {
                     </Link>
                   </DropdownMenuItem>
                 )}
+
                 {isAdmin && (
                   <DropdownMenuItem>
                     <Link href={uiContent.routeAdmin}>{uiContent.admin}</Link>
@@ -267,7 +316,9 @@ useEffect(() => {
                       className="flex-between mb-2"
                     >
                       <span className="muted">{uiContent.connections}</span>
-                      <span className="font-semibold">{user.connectionsCount}</span>
+                      <span className="font-semibold">
+                        {user.connectionsCount}
+                      </span>
                     </Link>
                   </>
                 )}
@@ -389,79 +440,7 @@ useEffect(() => {
               </div>
             </div>
 
-            <div className="dashboard-stats">
-              {isCandidate && (
-                <>
-                  <div className="dashboard-stat-card">
-                    <h3>{user.connectionsCount}</h3>
-                    <p>{uiContent.connections}</p>
-                  </div>
-
-                  <div className="dashboard-stat-card">
-                    <h3>{user.projectsCount}</h3>
-                    <p>{uiContent.projects}</p>
-                  </div>
-
-                  <div className="dashboard-stat-card">
-                    <h3>{user.skillsCount}</h3>
-                    <p>{uiContent.skills}</p>
-                  </div>
-
-                  <div className="dashboard-stat-card">
-                    <h3>{user.profileCompletion}%</h3>
-                    <p>{uiContent.profileCompletion}</p>
-                  </div>
-                </>
-              )}
-
-              {isRecruiter && (
-                <>
-                  <div className="dashboard-stat-card">
-                    <h3>{user.companyName || uiContent.notAdded}</h3>
-                    <p>{uiContent.companyName}</p>
-                  </div>
-
-                  <div className="dashboard-stat-card">
-                    <h3>{user.hiringTitle || uiContent.notAdded}</h3>
-                    <p>{uiContent.hiringTitle}</p>
-                  </div>
-
-                  <div className="dashboard-stat-card">
-                    <h3>{user.companyLocation || uiContent.notAdded}</h3>
-                    <p>{uiContent.companyLocation}</p>
-                  </div>
-
-                  <div className="dashboard-stat-card">
-                    <h3>{user.profileCompletion}%</h3>
-                    <p>{uiContent.recruiterProfile}</p>
-                  </div>
-                </>
-              )}
-
-              {isAdmin && (
-                <>
-                  <div className="dashboard-stat-card">
-                    <h3>{user.adminTitle || uiContent.adminRole}</h3>
-                    <p>{uiContent.role}</p>
-                  </div>
-
-                  <div className="dashboard-stat-card">
-                    <h3>{uiContent.adminUsers}</h3>
-                    <p>{uiContent.moderation}</p>
-                  </div>
-
-                  <div className="dashboard-stat-card">
-                    <h3>{uiContent.access}</h3>
-                    <p>{uiContent.staffControls}</p>
-                  </div>
-
-                  <div className="dashboard-stat-card">
-                    <h3>{user.profileCompletion}%</h3>
-                    <p>{uiContent.adminProfile}</p>
-                  </div>
-                </>
-              )}
-            </div>
+            <DashboardStats user={user} uiContent={uiContent} />
 
             {isCandidate && (
               <>
@@ -487,26 +466,30 @@ useEffect(() => {
                   </div>
                 )}
 
-              <div className="card">
-                <div className="card-header">
-                  <h3>{uiContent.companyInformation}</h3>
-                </div>
+                <div className="card">
+                  <div className="card-header">
+                    <h3>{uiContent.companyInformation}</h3>
+                  </div>
 
-                <div className="card-body profile-detail-list">
-                  <div>
-                    <span>{uiContent.companyName}</span>
-                    <strong>{user.companyName || uiContent.notAdded}</strong>
-                  </div>
-                  <div>
-                    <span>{uiContent.hiringTitle}</span>
-                    <strong>{user.hiringTitle || uiContent.notAdded}</strong>
-                  </div>
-                  <div>
-                    <span>{uiContent.companyLocation}</span>
-                    <strong>{user.companyLocation || uiContent.notAdded}</strong>
+                  <div className="card-body profile-detail-list">
+                    <div>
+                      <span>{uiContent.companyName}</span>
+                      <strong>{user.companyName || uiContent.notAdded}</strong>
+                    </div>
+
+                    <div>
+                      <span>{uiContent.hiringTitle}</span>
+                      <strong>{user.hiringTitle || uiContent.notAdded}</strong>
+                    </div>
+
+                    <div>
+                      <span>{uiContent.companyLocation}</span>
+                      <strong>
+                        {user.companyLocation || uiContent.notAdded}
+                      </strong>
+                    </div>
                   </div>
                 </div>
-              </div>
               </>
             )}
 
@@ -535,9 +518,9 @@ useEffect(() => {
                     <div className="activity-list">
                       {activities.map((activity) => (
                         <div key={activity.id} className="mb-2 text-sm">
-                          <div>{activity.title}</div>
+                          <div className="font-semibold">{activity.title}</div>
                           <div className="text-xs muted">
-                            {new Date(activity.created_at).toLocaleString()}
+                            {formatRelativeTime(activity.created_at)}
                           </div>
                         </div>
                       ))}
@@ -651,47 +634,47 @@ useEffect(() => {
 
             {isCandidate && (
               <div className="card">
-              <div className="card-body">
-                <div className="text-center">
-                  <div className="font-semibold mb-1">
-                    {uiContent.profileCompletion}
-                  </div>
-
-                  <progress
-                    className="progress-bar"
-                    value={user.profileCompletion}
-                    max={100}
-                  />
-
-                  <div className="text-sm muted mt-1">
-                    {user.profileCompletion}% {uiContent.complete}
-                  </div>
-
-                  {user.missingFields.length > 0 && (
-                    <div className="mt-2 text-left">
-                      <p className="text-sm font-semibold mb-1">
-                        {uiContent.completeTheseNext}
-                      </p>
-
-                      <ul className="text-sm muted profile-missing-list">
-                        {user.missingFields.map((field) => (
-                          <li key={field}>{field}</li>
-                        ))}
-                      </ul>
+                <div className="card-body">
+                  <div className="text-center">
+                    <div className="font-semibold mb-1">
+                      {uiContent.profileCompletion}
                     </div>
-                  )}
 
-                  {user.profileCompletion < 100 && (
-                    <Link
-                      href={uiContent.routeProfileEdit}
-                      className="btn-outline btn-sm mt-2"
-                    >
-                      {uiContent.completeProfile}
-                    </Link>
-                  )}
+                    <progress
+                      className="progress-bar"
+                      value={user.profileCompletion}
+                      max={100}
+                    />
+
+                    <div className="text-sm muted mt-1">
+                      {user.profileCompletion}% {uiContent.complete}
+                    </div>
+
+                    {user.missingFields.length > 0 && (
+                      <div className="mt-2 text-left">
+                        <p className="text-sm font-semibold mb-1">
+                          {uiContent.completeTheseNext}
+                        </p>
+
+                        <ul className="text-sm muted profile-missing-list">
+                          {user.missingFields.map((field) => (
+                            <li key={field}>{field}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {user.profileCompletion < 100 && (
+                      <Link
+                        href={uiContent.routeProfileEdit}
+                        className="btn-outline btn-sm mt-2"
+                      >
+                        {uiContent.completeProfile}
+                      </Link>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
             )}
           </aside>
         </div>
