@@ -4,22 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { fetchUiContent, type UiContent } from "../../api/ui-content";
-import ProjectsSection from "../../components/ProjectsSection"; // This line is not changed.
+import ProjectsSection from "../../components/ProjectsSection";
 import DashboardActivityCard from "./components/DashboardActivity";
-import SkillsSection from "../../components/SkillsSection";
 import ExperienceSection from "../../components/ExperienceSection";
 import DashboardContactModal from "./components/DashboardContactModal";
+import DashboardHeader from "./components/DashboardHeader";
+import DashboardLoadingState from "./components/DashboardLoadingState";
+import DashboardSidebar from "./components/DashboardSidebar";
 import DashboardStats from "./components/DashboardStats";
-import { Button } from "../../components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "../../components/ui/dropdown-menu";
 import {
   fetchDashboardSummary,
   updateDashboardOpenToWork,
@@ -29,71 +21,6 @@ import type {
   DashboardActivity,
   DashboardUser,
 } from "../../../types/dashboard";
-
-function formatUiText(template: string, values: Record<string, string>) {
-  return Object.entries(values).reduce(
-    (text, [key, value]) => text.replaceAll(`{${key}}`, value),
-    template,
-  );
-}
-
-function formatRelativeTime(value: string) {
-  const date = new Date(value);
-  const now = new Date();
-
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-  const diffInMinutes = Math.floor(diffInSeconds / 60);
-  const diffInHours = Math.floor(diffInMinutes / 60);
-  const diffInDays = Math.floor(diffInHours / 24);
-
-  if (diffInSeconds < 60) return "Just now";
-  if (diffInMinutes < 60) return `${diffInMinutes} min ago`;
-  if (diffInHours < 24) return `${diffInHours} hr ago`;
-  if (diffInDays === 1) return "Yesterday";
-  if (diffInDays < 7) return `${diffInDays} days ago`;
-
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
-
-function DashboardLoadingState() {
-  return (
-    <div className="app-main">
-      <div className="container">
-        <div className="card">
-          <div className="card-body text-center">
-            <p className="muted">Loading dashboard...</p>
-          </div>
-        </div>
-
-        <div className="dashboard-stats mt-2">
-          <div className="dashboard-stat-card">
-            <h3>...</h3>
-            <p>Loading</p>
-          </div>
-
-          <div className="dashboard-stat-card">
-            <h3>...</h3>
-            <p>Loading</p>
-          </div>
-
-          <div className="dashboard-stat-card">
-            <h3>...</h3>
-            <p>Loading</p>
-          </div>
-
-          <div className="dashboard-stat-card">
-            <h3>...</h3>
-            <p>Loading</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -167,13 +94,6 @@ export default function DashboardPage() {
     }
   }
 
-  const handleSkillsUpdate = useCallback((skills: string[]) => {
-    setUser((prev) => {
-      if (!prev || prev.skillsCount === skills.length) return prev;
-      return { ...prev, skillsCount: skills.length };
-    });
-  }, []);
-
   const handleProjectCountChange = useCallback((count: number) => {
     setUser((prev) => {
       if (!prev || prev.projectsCount === count) return prev;
@@ -199,6 +119,7 @@ export default function DashboardPage() {
           <div className="card">
             <div className="card-body text-center">
               <p className="form-error">{dashboardError}</p>
+
               <button
                 type="button"
                 className="btn-primary mt-2"
@@ -235,148 +156,10 @@ export default function DashboardPage() {
   return (
     <div className="app-main">
       <div className="container">
-        <div className="dashboard-header">
-          <div>
-            <h1>
-              {isAdmin
-                ? uiContent.adminDashboard
-                : isRecruiter
-                  ? uiContent.recruiterDashboard
-                  : uiContent.candidateDashboard}
-            </h1>
-            <p>
-              {formatUiText(
-                isAdmin
-                  ? uiContent.adminDashboardIntro
-                  : isRecruiter
-                    ? uiContent.recruiterDashboardIntro
-                    : uiContent.candidateDashboardIntro,
-                { name: user.fullName },
-              )}
-            </p>
-          </div>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline">{uiContent.dashboardActions}</Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>{uiContent.profile}</DropdownMenuLabel>
-                <DropdownMenuItem>
-                  <Link href={uiContent.routeProfile}>{uiContent.profile}</Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Link href={uiContent.routeProfileEdit}>
-                    {uiContent.editProfile}
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-
-              <DropdownMenuSeparator />
-
-              <DropdownMenuGroup>
-                {isCandidate && (
-                  <DropdownMenuItem>
-                    <Link href={uiContent.routeConnections}>
-                      {uiContent.myNetwork}
-                    </Link>
-                  </DropdownMenuItem>
-                )}
-
-                {isAdmin && (
-                  <DropdownMenuItem>
-                    <Link href={uiContent.routeAdmin}>{uiContent.admin}</Link>
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <DashboardHeader user={user} uiContent={uiContent} />
 
         <div className="main-grid">
-          <aside>
-            <div className="card">
-              <div className="profile-banner-sm">
-                <div className="profile-avatar-wrap-center">
-                  <div className="profile-avatar-sm">{userInitial}</div>
-                </div>
-              </div>
-
-              <div className="card-body text-center profile-sidebar-body">
-                <h3>{user.fullName}</h3>
-                <p className="text-sm muted">
-                  {user.headline || uiContent.addProfessionalHeadline}
-                </p>
-                <div className="role-badge">{roleLabel}</div>
-              </div>
-
-              <div className="divider"></div>
-
-              <div className="card-body text-sm">
-                {isCandidate && (
-                  <>
-                    <div className="flex-between mb-2">
-                      <span className="muted">{uiContent.profileViewers}</span>
-                      <span className="font-semibold">
-                        {user.profileViewers}
-                      </span>
-                    </div>
-
-                    <Link
-                      href={uiContent.routeConnections}
-                      className="flex-between mb-2"
-                    >
-                      <span className="muted">{uiContent.connections}</span>
-                      <span className="font-semibold">
-                        {user.connectionsCount}
-                      </span>
-                    </Link>
-                  </>
-                )}
-
-                {isRecruiter && (
-                  <>
-                    <div className="flex-between mb-2">
-                      <span className="muted">{uiContent.companyName}</span>
-                      <span className="font-semibold">
-                        {user.companyName || uiContent.notAdded}
-                      </span>
-                    </div>
-
-                    <div className="flex-between mb-2">
-                      <span className="muted">{uiContent.hiringTitle}</span>
-                      <span className="font-semibold">
-                        {user.hiringTitle || uiContent.notAdded}
-                      </span>
-                    </div>
-                  </>
-                )}
-
-                {isAdmin && (
-                  <div className="flex-between mb-2">
-                    <span className="muted">{uiContent.adminTitle}</span>
-                    <span className="font-semibold">
-                      {user.adminTitle || uiContent.adminTitlePlaceholder}
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex-between mb-2">
-                  <span className="muted">{uiContent.adminStatus}</span>
-                  <span className="font-semibold">
-                    {isCandidate
-                      ? user.openToWork
-                        ? uiContent.openToWork
-                        : uiContent.notLooking
-                      : isRecruiter
-                        ? user.companyName || uiContent.recruiter
-                        : user.adminTitle || uiContent.adminRole}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </aside>
+          <DashboardSidebar user={user} uiContent={uiContent} />
 
           <main>
             <div className="card">

@@ -1,6 +1,6 @@
 import type { UiContent } from "../../../api/ui-content";
 import type { DashboardActivity as DashboardActivityType } from "../../../../types/dashboard";
-import { formatRelativeTime } from "../dashboardUtils";
+import { formatRelativeTime } from "../Utils";
 
 type DashboardActivityProps = {
   activities: DashboardActivityType[];
