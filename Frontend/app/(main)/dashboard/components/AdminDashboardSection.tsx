@@ -1,4 +1,27 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import {
+  getAdminDashboardData,
+  type AdminDashboardData,
+} from "../../../services/dashboard";
+
 export default function AdminDashboardSection() {
+  const [data, setData] = useState<AdminDashboardData | null>(null);
+
+  useEffect(() => {
+    async function loadAdminData() {
+      try {
+        const adminData = await getAdminDashboardData();
+        setData(adminData);
+      } catch {
+        setData(null);
+      }
+    }
+
+    loadAdminData();
+  }, []);
+
   return (
     <section className="dashboard-section">
       <div className="section-header">
@@ -11,14 +34,14 @@ export default function AdminDashboardSection() {
       <div className="dashboard-grid">
         <article className="dashboard-card">
           <span className="card-label">Users</span>
-          <h3>User management</h3>
-          <p>Monitor registered users and platform activity.</p>
+          <h3>{data?.totalUsers ?? 0} total users</h3>
+          <p>{data?.activeUsers ?? 0} users are currently active.</p>
         </article>
 
         <article className="dashboard-card">
-          <span className="card-label">Reports</span>
-          <h3>Platform reports</h3>
-          <p>Review profile activity, connections, and system usage.</p>
+          <span className="card-label">Platform</span>
+          <h3>{data?.totalConnections ?? 0} connections</h3>
+          <p>{data?.recruiters ?? 0} recruiter accounts on the platform.</p>
         </article>
       </div>
     </section>
