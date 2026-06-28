@@ -10,6 +10,7 @@ import ExperienceSection from "../../components/ExperienceSection";
 import DashboardContactModal from "./components/DashboardContactModal";
 import DashboardHeader from "./components/DashboardHeader";
 import DashboardLoadingState from "./components/DashboardLoadingState";
+import DashboardRightSidebar from "./components/DashboardRightSidebar";
 import DashboardSidebar from "./components/DashboardSidebar";
 import DashboardStats from "./components/DashboardStats";
 import {
@@ -318,153 +319,11 @@ export default function DashboardPage() {
             )}
           </main>
 
-          <aside>
-            {isCandidate && (
-              <div className="card">
-                <div className="card-header">
-                  <h3>{uiContent.professionalProfiles}</h3>
-                </div>
-
-                <div className="card-body">
-                  {user.linkedinUrl ? (
-                    <a
-                      href={user.linkedinUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="quick-link"
-                    >
-                      {uiContent.linkedin}
-                    </a>
-                  ) : (
-                    <Link
-                      href={uiContent.routeProfileEdit}
-                      className="quick-link"
-                    >
-                      {uiContent.addLinkedin}
-                    </Link>
-                  )}
-
-                  {user.githubUrl ? (
-                    <a
-                      href={user.githubUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="quick-link"
-                    >
-                      {uiContent.github}
-                    </a>
-                  ) : (
-                    <Link
-                      href={uiContent.routeProfileEdit}
-                      className="quick-link"
-                    >
-                      {uiContent.addGithub}
-                    </Link>
-                  )}
-
-                  {user.portfolioUrl ? (
-                    <a
-                      href={user.portfolioUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="quick-link"
-                    >
-                      {uiContent.portfolio}
-                    </a>
-                  ) : (
-                    <Link
-                      href={uiContent.routeProfileEdit}
-                      className="quick-link"
-                    >
-                      {uiContent.addPortfolio}
-                    </Link>
-                  )}
-
-                  {user.cvUrl ? (
-                    <a
-                      href={cvUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="quick-link"
-                    >
-                      {uiContent.viewCv}
-                    </a>
-                  ) : (
-                    <Link
-                      href={uiContent.routeProfileEdit}
-                      className="quick-link"
-                    >
-                      {uiContent.uploadCv}
-                    </Link>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {isRecruiter && user.companyWebsite && (
-              <div className="card">
-                <div className="card-header">
-                  <h3>{uiContent.companyWebsite}</h3>
-                </div>
-
-                <div className="card-body">
-                  <a
-                    href={user.companyWebsite}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="quick-link"
-                  >
-                    {uiContent.companyWebsite}
-                  </a>
-                </div>
-              </div>
-            )}
-
-            {isCandidate && (
-              <div className="card">
-                <div className="card-body">
-                  <div className="text-center">
-                    <div className="font-semibold mb-1">
-                      {uiContent.profileCompletion}
-                    </div>
-
-                    <progress
-                      className="progress-bar"
-                      value={user.profileCompletion}
-                      max={100}
-                    />
-
-                    <div className="text-sm muted mt-1">
-                      {user.profileCompletion}% {uiContent.complete}
-                    </div>
-
-                    {user.missingFields.length > 0 && (
-                      <div className="mt-2 text-left">
-                        <p className="text-sm font-semibold mb-1">
-                          {uiContent.completeTheseNext}
-                        </p>
-
-                        <ul className="text-sm muted profile-missing-list">
-                          {user.missingFields.map((field) => (
-                            <li key={field}>{field}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {user.profileCompletion < 100 && (
-                      <Link
-                        href={uiContent.routeProfileEdit}
-                        className="btn-outline btn-sm mt-2"
-                      >
-                        {uiContent.completeProfile}
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </aside>
+          <DashboardRightSidebar
+            user={user}
+            uiContent={uiContent}
+            cvUrl={cvUrl}
+          />
         </div>
 
         {showContactModal && (
