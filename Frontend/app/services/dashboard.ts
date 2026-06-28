@@ -1,6 +1,7 @@
 import { apiFetch } from "../api/client";
 
 export type DashboardData = {
+  user: any;
   fullName: string;
   headline: string;
   profileCompletion: number;
@@ -61,6 +62,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const experiences = await readJson<unknown>(experiencesRes);
 
   return {
+    user: profile,
     fullName: profile.fullName || "User",
     headline: profile.headline || "Manage your professional profile.",
     profileCompletion:

@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getDashboardData, type DashboardData } from "../../services/dashboard";
+import {
+ getDashboardData,
+ type DashboardData,
+} from "../../services/dashboard";
 import DashboardOverview from "./components/DashboardOverview";
+import DashboardHeader from "./components/DashboardHeader";
+import DashboardProfileCard from "./components/DashboardProfileCard";
+import DashboardStats from "./components/DashboardStats";
+import DashboardSidebar from "./components/DashboardSidebar";
+import DashboardRightSidebar from "./components/DashboardRightSidebar";
 import RecruiterDashboardSection from "./components/RecruiterDashboardSection";
 import AdminDashboardSection from "./components/AdminDashboardSection";
 
@@ -42,19 +50,24 @@ export default function DashboardPage() {
     );
   }
 
+  const isRecruiter = dashboardData.user.role === "recruiter";
+  const isAdmin = dashboardData.user.role === "admin";
+
   return (
     <main className="page-shell">
       <section className="page-header">
         <div>
           <p className="eyebrow">Dashboard</p>
-          <h1>Welcome back, {dashboardData.fullName}</h1>
-          <p>{dashboardData.headline}</p>
+          <h1>Welcome back, {dashboardData.user.fullName}</h1>
+          <p>{dashboardData.user.headline}</p>
         </div>
       </section>
 
       <DashboardOverview data={dashboardData} />
-      <RecruiterDashboardSection />
-      <AdminDashboardSection />
+
+      {(isRecruiter || isAdmin) && <RecruiterDashboardSection />}
+
+      {isAdmin && <AdminDashboardSection />}
     </main>
   );
 }
