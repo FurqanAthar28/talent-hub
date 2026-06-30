@@ -11,7 +11,7 @@ import { buildMediaUrl } from "../../../utils/media";
 import BasicInfoSection from "./components/BasicInfoSection";
 import AboutSection from "./components/AboutSection";
 import SocialLinksSection from "./components/SocialLinksSection";
-
+import ResumeSection from "./components/ResumeSection";
 type Profile = {
   role: "candidate" | "recruiter" | "admin";
   fullName: string;
@@ -250,50 +250,13 @@ export default function EditProfilePage() {
 )}
 
         {currentProfile?.role === "candidate" && (
-          <section id="resume" className="form-section">
-            <div className="form-section-header">
-              <p className="eyebrow">Resume</p>
-              <h2>{content.cvResume || "CV / Resume"}</h2>
-              <p>
-                Upload your latest resume so recruiters can review your profile.
-              </p>
-            </div>
-
-            {currentProfile?.cvUrl && (
-              <a
-                href={currentCvUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="quick-link"
-              >
-                {content.viewCurrentCv || "View current CV"}
-              </a>
-            )}
-
-            <div className="file-upload-box">
-              <input
-                type="file"
-                accept=".pdf,application/pdf"
-                onChange={(event) => setCvFile(event.target.files?.[0] || null)}
-              />
-
-              <p className="file-upload-title">
-                {content.cvReplaceTitle || "Replace your current CV"}
-              </p>
-
-              <p className="text-xs muted mt-1">
-                {content.cvUploadHint || "PDF files only."}
-              </p>
-
-              {cvFile && (
-                <p className="text-sm mt-1 success-text">
-                  {content.selectedFileLabel || "Selected file"}: {cvFile.name}
-                </p>
-              )}
-            </div>
-          </section>
-        )}
-
+  <ResumeSection
+    content={content}
+    currentCvUrl={currentCvUrl}
+    cvFile={cvFile}
+    setCvFile={setCvFile}
+  />
+)}
         {currentProfile?.role === "recruiter" && (
           <section id="company" className="form-section">
             <div className="form-section-header">
