@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { apiFetch } from "../api/client";
-import { fetchUiContent, type UiContent } from "../api/ui-content";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+
+import { apiFetch } from "../api/client";
+import { fetchUiContent, type UiContent } from "../api/ui-content";
 
 type AuthUser = {
   id: number;
@@ -48,6 +49,7 @@ export default function MainLayout({
         setUser(data);
       } catch (error) {
         console.error("Failed to load authenticated user:", error);
+
         if (signinRoute) {
           router.push(signinRoute);
         }
@@ -104,7 +106,7 @@ export default function MainLayout({
                 </Link>
               )}
 
-              {(isRecruiter || isAdmin) && (
+              {(isRecruiter ) && (
                 <Link
                   href={uiContent.routeConnections}
                   className={
@@ -115,12 +117,16 @@ export default function MainLayout({
                 </Link>
               )}
 
-              <Link
-                href={uiContent.routeMessages}
-                className={pathname === uiContent.routeMessages ? "active" : ""}
-              >
-                {uiContent.messages}
-              </Link>
+              {!isAdmin && (
+                <Link
+                  href={uiContent.routeMessages}
+                  className={
+                    pathname === uiContent.routeMessages ? "active" : ""
+                  }
+                >
+                  {uiContent.messages}
+                </Link>
+              )}
 
               {isAdmin && (
                 <Link

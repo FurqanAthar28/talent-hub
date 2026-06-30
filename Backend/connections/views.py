@@ -129,6 +129,7 @@ def pending_requests_view(request):
     requests = ConnectionRequest.objects.filter(
         receiver=request.user,
         sender__in=network_users_queryset(),
+        status="pending",
     ).order_by("-created_at")
 
     serializer = ConnectionRequestSerializer(requests, many=True)

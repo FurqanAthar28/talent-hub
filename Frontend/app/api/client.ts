@@ -15,7 +15,7 @@ export async function apiFetch(
     ...options,
   });
 
-  if (redirectOnUnauthorized && (res.status === 401 || res.status === 403)) {
+  if (redirectOnUnauthorized && res.status === 401) {
     window.location.replace("/signin");
   }
 

@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LIVE_REFRESH_INTERVAL_MS } from "../../config/constants";
+import { useRouter } from "next/navigation";
 
+import { apiFetch } from "../../api/client";
 import { fetchUiContent, type UiContent } from "../../api/ui-content";
+import { LIVE_REFRESH_INTERVAL_MS } from "../../config/constants";
 import {
   fetchConversationMessages,
   fetchConversations,
@@ -11,6 +13,15 @@ import {
   type Conversation,
   type Message,
 } from "../../services/messages";
+
+type AuthUser = {
+  id: number;
+  email: string;
+  username: string;
+  fullName: string;
+  isStaff: boolean;
+  role?: string;
+};
 
 function getInitials(name: string) {
   return name
@@ -31,6 +42,8 @@ function formatMessageTime(value: string) {
 }
 
 export default function MessagesPage() {
+  const router = useRouter();
+
   const [uiContent, setUiContent] = useState<UiContent>({});
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
@@ -101,6 +114,20 @@ export default function MessagesPage() {
       const content = await fetchUiContent();
       setUiContent(content);
 
+      const meRes = await apiFetch(content.apiAccountsMe);
+
+      if (!meRes.ok) {
+        router.replace(content.routeSignin);
+        return;
+      }
+
+      const currentUser = (await meRes.json()) as AuthUser;
+
+      if (currentUser.isStaff || currentUser.role === "admin") {
+        router.replace(content.routeAdmin);
+        return;
+      }
+
       const conversationData = await fetchConversations(content);
       setConversations(conversationData);
 
@@ -128,7 +155,7 @@ export default function MessagesPage() {
     } finally {
       setLoading(false);
     }
-  }, [loadMessages, uiContent.messageUnableToLoad]);
+  }, [loadMessages, router, uiContent.messageUnableToLoad]);
 
   useEffect(() => {
     loadConversations();
