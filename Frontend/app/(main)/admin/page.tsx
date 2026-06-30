@@ -5,64 +5,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../api/client";
 import { fetchUiContent, type UiContent } from "../../api/ui-content";
 
-type AdminStats = {
-  users: number;
-  activeUsers: number;
-  inactiveUsers: number;
-  staffUsers: number;
-  skills: number;
-  projects: number;
-  experiences: number;
-  pendingConnectionRequests: number;
-  pendingRecruiters: number;
-};
+import type {
+  AdminStats,
+  AdminUser,
+  AdminConnection,
+  AdminAuditLog,
+  AuthUser,
+} from "./types";
 
-type AdminUser = {
-  id: number;
-  email: string;
-  username: string;
-  fullName: string;
-  role: "candidate" | "recruiter" | "admin";
-  is_active: boolean;
-  is_staff: boolean;
-  date_joined: string;
-  last_login: string | null;
-  profileCompletion: number;
-  skillsCount: number;
-  projectsCount: number;
-  experiencesCount: number;
-  connectionsCount: number;
-  recruiterVerificationStatus: "pending" | "approved" | "rejected";
-  recruiterVerificationNote: string;
-};
-
-type AdminConnection = {
-  id: number;
-  userId: number;
-  userName: string;
-  userEmail: string;
-  userRole: "candidate" | "recruiter";
-  connectedUserId: number;
-  connectedUserName: string;
-  connectedUserEmail: string;
-  connectedUserRole: "candidate" | "recruiter";
-  createdAt: string;
-};
-
-type AdminAuditLog = {
-  id: number;
-  actorName: string;
-  actorEmail: string;
-  targetUserName: string;
-  targetUserEmail: string;
-  action: string;
-  description: string;
-  createdAt: string;
-};
-
-type AuthUser = {
-  isStaff: boolean;
-};
 
 function formatDate(value: string | null) {
   if (!value) return "";
@@ -77,13 +27,19 @@ function formatDate(value: string | null) {
 function getRecruiterVerificationLabel(user: AdminUser, uiContent: UiContent) {
   if (user.role !== "recruiter") return "-";
 
-  const labels = {
-    pending: uiContent.adminRecruiterPending,
-    approved: uiContent.adminRecruiterApproved,
-    rejected: uiContent.adminRecruiterRejected,
-  };
+  if (user.recruiterVerificationStatus === "pending") {
+    return uiContent.adminRecruiterPending;
+  }
 
-  return labels[user.recruiterVerificationStatus];
+  if (user.recruiterVerificationStatus === "approved") {
+    return uiContent.adminRecruiterApproved;
+  }
+
+  if (user.recruiterVerificationStatus === "rejected") {
+    return uiContent.adminRecruiterRejected;
+  }
+
+  return "-";
 }
 
 export default function AdminPage() {
