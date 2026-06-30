@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../api/client";
 import { fetchUiContent, type UiContent } from "../../api/ui-content";
 import StatsSection from "./components/StatsSection";
+import AuditLogsSection from "./components/AuditLogsSection";
 import ConnectionsSection from "./components/ConnectionsSection";
 
 import type {
@@ -14,7 +15,6 @@ import type {
   AdminAuditLog,
   AuthUser,
 } from "./types";
-
 
 function formatDate(value: string | null) {
   if (!value) return "";
@@ -53,65 +53,78 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [roleLoading, setRoleLoading] = useState<number | null>(null);
-  const [verificationLoading, setVerificationLoading] = useState<number | null>(null);
+  const [verificationLoading, setVerificationLoading] = useState<number | null>(
+    null
+  );
   const [connections, setConnections] = useState<AdminConnection[]>([]);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
   const [firstUserId, setFirstUserId] = useState("");
   const [secondUserId, setSecondUserId] = useState("");
   const [connectionSaving, setConnectionSaving] = useState(false);
-  const [disconnectLoading, setDisconnectLoading] = useState<number | null>(null);
+  const [disconnectLoading, setDisconnectLoading] = useState<number | null>(
+    null
+  );
   const [canViewAdmin, setCanViewAdmin] = useState(false);
 
-  const loadAdminData = useCallback(async (clearNotice = true) => {
-    setLoading(true);
-    if (clearNotice) setNotice("");
+  const loadAdminData = useCallback(
+    async (clearNotice = true) => {
+      setLoading(true);
+      if (clearNotice) setNotice("");
 
-    try {
-      const uiContentData = await fetchUiContent();
-      setUiContent(uiContentData);
+      try {
+        const uiContentData = await fetchUiContent();
+        setUiContent(uiContentData);
 
-      const meRes = await apiFetch(uiContentData.apiAccountsMe);
+        const meRes = await apiFetch(uiContentData.apiAccountsMe);
 
-      if (!meRes.ok) {
+        if (!meRes.ok) {
+          setCanViewAdmin(false);
+          setNotice(uiContentData.adminAccessDenied);
+          return;
+        }
+
+        const currentUser = (await meRes.json()) as AuthUser;
+
+        if (!currentUser.isStaff) {
+          setCanViewAdmin(false);
+          setNotice(uiContentData.adminAccessDenied);
+          return;
+        }
+
+        setCanViewAdmin(true);
+
+        const [statsRes, usersRes, connectionsRes, auditLogsRes] =
+          await Promise.all([
+            apiFetch(uiContentData.apiAdminStats),
+            apiFetch(uiContentData.apiAdminUsers),
+            apiFetch(uiContentData.apiAdminConnections),
+            apiFetch(uiContentData.apiAdminAuditLogs),
+          ]);
+
+        if (
+          !statsRes.ok ||
+          !usersRes.ok ||
+          !connectionsRes.ok ||
+          !auditLogsRes.ok
+        ) {
+          setNotice(uiContentData.adminUnableToLoad);
+          return;
+        }
+
+        setStats(await statsRes.json());
+        setUsers(await usersRes.json());
+        setConnections(await connectionsRes.json());
+        setAuditLogs(await auditLogsRes.json());
+      } catch (error) {
+        console.error("Failed to load admin data:", error);
         setCanViewAdmin(false);
-        setNotice(uiContentData.adminAccessDenied);
-        return;
+        setNotice(uiContent.adminUnableToLoad);
+      } finally {
+        setLoading(false);
       }
-
-      const currentUser = (await meRes.json()) as AuthUser;
-
-      if (!currentUser.isStaff) {
-        setCanViewAdmin(false);
-        setNotice(uiContentData.adminAccessDenied);
-        return;
-      }
-
-      setCanViewAdmin(true);
-
-      const [statsRes, usersRes, connectionsRes, auditLogsRes] = await Promise.all([
-        apiFetch(uiContentData.apiAdminStats),
-        apiFetch(uiContentData.apiAdminUsers),
-        apiFetch(uiContentData.apiAdminConnections),
-        apiFetch(uiContentData.apiAdminAuditLogs),
-      ]);
-
-      if (!statsRes.ok || !usersRes.ok || !connectionsRes.ok || !auditLogsRes.ok) {
-        setNotice(uiContentData.adminUnableToLoad);
-        return;
-      }
-
-      setStats(await statsRes.json());
-      setUsers(await usersRes.json());
-      setConnections(await connectionsRes.json());
-      setAuditLogs(await auditLogsRes.json());
-    } catch (error) {
-      console.error("Failed to load admin data:", error);
-      setCanViewAdmin(false);
-      setNotice(uiContent.adminUnableToLoad);
-    } finally {
-      setLoading(false);
-    }
-  }, [uiContent.adminUnableToLoad]);
+    },
+    [uiContent.adminUnableToLoad]
+  );
 
   useEffect(() => {
     async function loadInitialAdminData() {
@@ -151,14 +164,11 @@ export default function AdminPage() {
     setNotice("");
 
     try {
-      const res = await apiFetch(
-        `${uiContent.apiAdminUsers}/${user.id}/status`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ is_active: !user.is_active }),
-        }
-      );
+      const res = await apiFetch(`${uiContent.apiAdminUsers}/${user.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: !user.is_active }),
+      });
       const data = await res.json();
 
       if (!res.ok) {
@@ -366,68 +376,28 @@ export default function AdminPage() {
 
         {notice && <div className="form-error mb-2">{notice}</div>}
 
-        {stats && (
-  <StatsSection
-    stats={stats}
-    uiContent={uiContent}
-  />
-)}
-<ConnectionsSection
-  uiContent={uiContent}
-  networkUsers={networkUsers}
-  connections={connections}
-  firstUserId={firstUserId}
-  secondUserId={secondUserId}
-  setFirstUserId={setFirstUserId}
-  setSecondUserId={setSecondUserId}
-  connectionSaving={connectionSaving}
-  disconnectLoading={disconnectLoading}
-  createManagedConnection={createManagedConnection}
-  disconnectManagedConnection={disconnectManagedConnection}
-  formatDate={formatDate}
-/>        
+        {stats && <StatsSection stats={stats} uiContent={uiContent} />}
 
-        <div className="card">
-          <div className="card-header">
-            <h3>{uiContent.adminAuditLogs}</h3>
-            <p className="muted text-sm">{uiContent.adminAuditLogsIntro}</p>
-          </div>
+        <ConnectionsSection
+          uiContent={uiContent}
+          networkUsers={networkUsers}
+          connections={connections}
+          firstUserId={firstUserId}
+          secondUserId={secondUserId}
+          setFirstUserId={setFirstUserId}
+          setSecondUserId={setSecondUserId}
+          connectionSaving={connectionSaving}
+          disconnectLoading={disconnectLoading}
+          createManagedConnection={createManagedConnection}
+          disconnectManagedConnection={disconnectManagedConnection}
+          formatDate={formatDate}
+        />
 
-          <div className="card-body">
-            {auditLogs.length === 0 ? (
-              <p className="text-center muted">{uiContent.adminNoAuditLogs}</p>
-            ) : (
-              <div className="admin-audit-list">
-                {auditLogs.map((log) => (
-                  <div key={log.id} className="admin-audit-row">
-                    <div>
-                      <div className="text-sm muted">{uiContent.adminAuditAction}</div>
-                      <div className="font-semibold">{log.description}</div>
-                      <div className="text-xs muted">{log.action}</div>
-                    </div>
-
-                    <div>
-                      <div className="text-sm muted">{uiContent.adminAuditActor}</div>
-                      <div>{log.actorName}</div>
-                      <div className="text-xs muted">{log.actorEmail}</div>
-                    </div>
-
-                    <div>
-                      <div className="text-sm muted">{uiContent.adminAuditTarget}</div>
-                      <div>{log.targetUserName || "-"}</div>
-                      <div className="text-xs muted">{log.targetUserEmail}</div>
-                    </div>
-
-                    <div>
-                      <div className="text-sm muted">{uiContent.adminAuditTime}</div>
-                      <div>{formatDate(log.createdAt)}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <AuditLogsSection
+          uiContent={uiContent}
+          auditLogs={auditLogs}
+          formatDate={formatDate}
+        />
 
         <div className="card">
           <div className="card-header flex-between">
@@ -500,6 +470,7 @@ export default function AdminPage() {
                       <div className="muted">
                         {getRecruiterVerificationLabel(user, uiContent)}
                       </div>
+
                       {user.role === "recruiter" && (
                         <div className="admin-inline-actions">
                           <button
@@ -517,6 +488,7 @@ export default function AdminPage() {
                               ? uiContent.adminVerifyingRecruiter
                               : uiContent.adminApproveRecruiter}
                           </button>
+
                           <button
                             type="button"
                             className="btn-outline btn-sm"
