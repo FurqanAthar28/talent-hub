@@ -2,32 +2,46 @@ import Link from "next/link";
 
 const actions = [
   {
-    title: "Complete Your Profile",
-    description:
-      "Improve your profile information and increase profile completion.",
+    title: "Complete Profile",
+    description: "Update headline, location, bio, and professional links.",
     href: "/profile/edit",
-    button: "Continue",
+    button: "Edit Profile",
   },
   {
     title: "Manage Resume",
-    description:
-      "Upload or replace your latest resume so recruiters see your updated CV.",
+    description: "Upload or replace your latest resume.",
     href: "/profile/edit#resume",
     button: "Resume",
   },
   {
-    title: "Grow Your Network",
-    description:
-      "Connect with professionals and recruiters to expand your opportunities.",
+    title: "Add Skills",
+    description: "Add your technical and professional skills.",
+    href: "/profile/edit#skills",
+    button: "Skills",
+  },
+  {
+    title: "Add Projects",
+    description: "Showcase practical work and portfolio projects.",
+    href: "/profile/edit#projects",
+    button: "Projects",
+  },
+  {
+    title: "Add Experience",
+    description: "Add work, internship, or freelance experience.",
+    href: "/profile/edit#experience",
+    button: "Experience",
+  },
+  {
+    title: "Grow Network",
+    description: "Connect with professionals and recruiters.",
     href: "/connections",
     button: "Discover",
   },
   {
     title: "Messages",
-    description:
-      "View and reply to conversations from your professional network.",
+    description: "View and reply to professional conversations.",
     href: "/messages",
-    button: "Open Inbox",
+    button: "Inbox",
   },
 ];
 

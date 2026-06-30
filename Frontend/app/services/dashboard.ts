@@ -48,31 +48,18 @@ function getArrayLength(data: unknown): number {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [accountRes, profileRes, skillsRes, projectsRes, experiencesRes] =
-    await Promise.all([
-      apiFetch("/accounts/me/"),
-      apiFetch("/profiles/me/"),
-      apiFetch("/profiles/skills/"),
-      apiFetch("/profiles/projects/"),
-      apiFetch("/profiles/experiences/"),
-    ]);
-
-  const account = await readJson<any>(accountRes);
-  const profile = await readJson<any>(profileRes);
-  const skills = await readJson<unknown>(skillsRes);
-  const projects = await readJson<unknown>(projectsRes);
-  const experiences = await readJson<unknown>(experiencesRes);
+  const response = await apiFetch("/profiles/me/");
+  const profile = await readJson<any>(response);
 
   return {
-    fullName: profile.fullName || account.fullName || account.full_name || "User",
+    fullName: profile.fullName || "User",
     headline: profile.headline || "Manage your professional profile.",
-    role: account.role || profile.role || "user",
-    profileCompletion:
-      profile.profileCompletion ?? profile.profile_completion ?? 0,
-    openToWork: profile.openToWork ?? profile.open_to_work ?? false,
-    skillsCount: getArrayLength(skills),
-    projectsCount: getArrayLength(projects),
-    experiencesCount: getArrayLength(experiences),
+    role: profile.role || "candidate",
+    profileCompletion: profile.profileCompletion ?? 0,
+    openToWork: profile.openToWork ?? false,
+    skillsCount: profile.skillsCount ?? 0,
+    projectsCount: profile.projectsCount ?? 0,
+    experiencesCount: profile.experiencesCount ?? 0,
   };
 }
 

@@ -13,10 +13,24 @@ from .serializers import (
     ProjectSerializer,
     ExperienceSerializer,
 )
+from .utils import calculate_profile_completion
 
 
 def add_activity(profile, title):
     Activity.objects.create(profile=profile, title=title)
+
+
+def refresh_profile_completion(profile):
+    serializer = ProfileSerializer(profile)
+    missing_fields = serializer.get_missingFields(profile)
+
+    profile.profile_completion = calculate_profile_completion(
+        profile,
+        missing_fields,
+    )
+    profile.save(update_fields=["profile_completion"])
+
+    return profile
 
 
 def get_or_create_user_profile(user):
@@ -65,6 +79,7 @@ def serializer_error_message(serializer):
 @permission_classes([IsAuthenticated])
 def my_profile_view(request):
     profile = get_or_create_user_profile(request.user)
+    profile = refresh_profile_completion(profile)
 
     serializer = ProfileSerializer(profile)
     return Response(serializer.data)
@@ -79,6 +94,8 @@ def user_profile_view(request, user_id):
         return Response({"message": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
     profile = get_or_create_user_profile(user)
+    profile = refresh_profile_completion(profile)
+
     serializer = ProfileSerializer(profile)
     return Response(serializer.data)
 
@@ -95,6 +112,7 @@ def track_profile_view(request, user_id):
         return Response({"message": "Profile not found"}, status=status.HTTP_404_NOT_FOUND)
 
     ProfileView.objects.update_or_create(profile=profile, viewer=request.user)
+
     serializer = ProfileSerializer(profile)
     return Response(serializer.data)
 
@@ -103,8 +121,10 @@ def track_profile_view(request, user_id):
 @permission_classes([IsAuthenticated])
 def activities_list_view(request):
     profile = get_or_create_user_profile(request.user)
+
     activities = Activity.objects.filter(profile=profile)[:10]
     serializer = ActivitySerializer(activities, many=True)
+
     return Response(serializer.data)
 
 
@@ -118,6 +138,7 @@ def user_skills_view(request, user_id):
 
     skills = Skill.objects.filter(profile=profile)
     serializer = SkillSerializer(skills, many=True)
+
     return Response(serializer.data)
 
 
@@ -131,6 +152,7 @@ def user_projects_view(request, user_id):
 
     projects = Project.objects.filter(profile=profile)
     serializer = ProjectSerializer(projects, many=True)
+
     return Response(serializer.data)
 
 
@@ -144,6 +166,7 @@ def user_experiences_view(request, user_id):
 
     experiences = Experience.objects.filter(profile=profile)
     serializer = ExperienceSerializer(experiences, many=True)
+
     return Response(serializer.data)
 
 
@@ -151,6 +174,7 @@ def user_experiences_view(request, user_id):
 @permission_classes([IsAuthenticated])
 def update_my_profile_view(request):
     profile = get_or_create_user_profile(request.user)
+
     serializer = ProfileUpdateSerializer(
         profile,
         data=request.data,
@@ -164,6 +188,8 @@ def update_my_profile_view(request):
         )
 
     profile = serializer.save()
+    profile = refresh_profile_completion(profile)
+
     add_activity(profile, "Updated profile information")
 
     serializer = ProfileSerializer(profile)
@@ -177,6 +203,7 @@ def skills_list_view(request):
 
     skills = Skill.objects.filter(profile=profile)
     serializer = SkillSerializer(skills, many=True)
+
     return Response(serializer.data)
 
 
@@ -184,6 +211,7 @@ def skills_list_view(request):
 @permission_classes([IsAuthenticated])
 def skill_create_view(request):
     profile = get_or_create_user_profile(request.user)
+
     serializer = SkillSerializer(data=request.data)
 
     if not serializer.is_valid():
@@ -193,6 +221,8 @@ def skill_create_view(request):
         )
 
     skill = serializer.save(profile=profile)
+    profile = refresh_profile_completion(profile)
+
     add_activity(profile, f"Added skill: {skill.name}")
 
     serializer = SkillSerializer(skill)
@@ -211,7 +241,11 @@ def skill_delete_view(request, skill_id):
 
     skill_name = skill.name
     skill.delete()
+
+    profile = refresh_profile_completion(profile)
+
     add_activity(profile, f"Removed skill: {skill_name}")
+
     return Response({"message": "Skill deleted"})
 
 
@@ -222,6 +256,7 @@ def projects_list_view(request):
 
     projects = Project.objects.filter(profile=profile)
     serializer = ProjectSerializer(projects, many=True)
+
     return Response(serializer.data)
 
 
@@ -229,6 +264,7 @@ def projects_list_view(request):
 @permission_classes([IsAuthenticated])
 def project_create_view(request):
     profile = get_or_create_user_profile(request.user)
+
     serializer = ProjectSerializer(data=request.data)
 
     if not serializer.is_valid():
@@ -238,6 +274,8 @@ def project_create_view(request):
         )
 
     project = serializer.save(profile=profile)
+    profile = refresh_profile_completion(profile)
+
     add_activity(profile, f"Added project: {project.title}")
 
     serializer = ProjectSerializer(project)
@@ -263,6 +301,8 @@ def project_update_view(request, project_id):
         )
 
     project = serializer.save()
+    profile = refresh_profile_completion(profile)
+
     add_activity(profile, f"Updated project: {project.title}")
 
     serializer = ProjectSerializer(project)
@@ -281,7 +321,11 @@ def project_delete_view(request, project_id):
 
     project_title = project.title
     project.delete()
+
+    profile = refresh_profile_completion(profile)
+
     add_activity(profile, f"Removed project: {project_title}")
+
     return Response({"message": "Project deleted"})
 
 
@@ -292,6 +336,7 @@ def experiences_list_view(request):
 
     experiences = Experience.objects.filter(profile=profile)
     serializer = ExperienceSerializer(experiences, many=True)
+
     return Response(serializer.data)
 
 
@@ -299,6 +344,7 @@ def experiences_list_view(request):
 @permission_classes([IsAuthenticated])
 def experience_create_view(request):
     profile = get_or_create_user_profile(request.user)
+
     serializer = ExperienceSerializer(data=request.data)
 
     if not serializer.is_valid():
@@ -308,6 +354,8 @@ def experience_create_view(request):
         )
 
     experience = serializer.save(profile=profile)
+    profile = refresh_profile_completion(profile)
+
     add_activity(profile, f"Added experience: {experience.title}")
 
     serializer = ExperienceSerializer(experience)
@@ -333,6 +381,8 @@ def experience_update_view(request, experience_id):
         )
 
     experience = serializer.save()
+    profile = refresh_profile_completion(profile)
+
     add_activity(profile, f"Updated experience: {experience.title}")
 
     serializer = ExperienceSerializer(experience)
@@ -351,5 +401,9 @@ def experience_delete_view(request, experience_id):
 
     experience_title = experience.title
     experience.delete()
+
+    profile = refresh_profile_completion(profile)
+
     add_activity(profile, f"Removed experience: {experience_title}")
+
     return Response({"message": "Experience deleted"})

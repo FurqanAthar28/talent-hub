@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
 import {
   getDashboardData,
   type DashboardData,
 } from "../../services/dashboard";
 
-import AdminDashboardSection from "./components/AdminDashboardSection";
 import DashboardError from "./components/DashboardError";
 import DashboardLoading from "./components/DashboardLoading";
 import DashboardOverview from "./components/DashboardOverview";
@@ -14,6 +15,8 @@ import DashboardQuickActions from "./components/DashboardQuickActions";
 import RecruiterDashboardSection from "./components/RecruiterDashboardSection";
 
 export default function DashboardPage() {
+  const router = useRouter();
+
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -22,6 +25,12 @@ export default function DashboardPage() {
     async function loadDashboardData() {
       try {
         const data = await getDashboardData();
+
+        if (data.role === "admin") {
+          router.replace("/admin");
+          return;
+        }
+
         setDashboardData(data);
       } catch {
         setError("Unable to load dashboard data. Please refresh and try again.");
@@ -31,7 +40,7 @@ export default function DashboardPage() {
     }
 
     loadDashboardData();
-  }, []);
+  }, [router]);
 
   if (isLoading) {
     return <DashboardLoading />;
@@ -42,7 +51,6 @@ export default function DashboardPage() {
   }
 
   const isRecruiter = dashboardData.role === "recruiter";
-  const isAdmin = dashboardData.role === "admin";
 
   return (
     <main className="page-shell">
@@ -71,9 +79,7 @@ export default function DashboardPage() {
 
         <DashboardQuickActions />
 
-        {(isRecruiter || isAdmin) && <RecruiterDashboardSection />}
-
-        {isAdmin && <AdminDashboardSection />}
+        {isRecruiter && <RecruiterDashboardSection />}
       </section>
     </main>
   );

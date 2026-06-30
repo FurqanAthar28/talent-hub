@@ -85,28 +85,26 @@ export default function MainLayout({
       <header className="app-header">
         <div className="container">
           <div className="app-header-inner">
-            <Link href={uiContent.routeDashboard} className="brand">
+            <Link
+              href={isAdmin ? uiContent.routeAdmin : uiContent.routeDashboard}
+              className="brand"
+            >
               {uiContent.appName}
             </Link>
 
             <nav className="nav">
-              <Link
-                href={uiContent.routeDashboard}
-                className={pathname === uiContent.routeDashboard ? "active" : ""}
-              >
-                {uiContent.home}
-              </Link>
-
               {!isAdmin && (
                 <Link
-                  href={uiContent.routeProfile}
-                  className={pathname === uiContent.routeProfile ? "active" : ""}
+                  href={uiContent.routeDashboard}
+                  className={
+                    pathname === uiContent.routeDashboard ? "active" : ""
+                  }
                 >
-                  {uiContent.profile}
+                  {uiContent.home}
                 </Link>
               )}
 
-              {(isRecruiter ) && (
+              {isRecruiter && (
                 <Link
                   href={uiContent.routeConnections}
                   className={

@@ -4,7 +4,7 @@ from .constants import MAX_CV_FILE_SIZE_BYTES
 from .models import Activity, Profile, Skill, Project, Experience
 from .pdf_metadata import apply_cv_pdf_metadata
 from .url_utils import normalize_url
-
+from .utils import calculate_profile_completion
 
 class ProfileSerializer(serializers.ModelSerializer):
     fullName = serializers.SerializerMethodField()
@@ -138,16 +138,10 @@ class ProfileSerializer(serializers.ModelSerializer):
         return missing
 
     def get_profileCompletion(self, obj):
-        if obj.role == Profile.ROLE_ADMIN:
-            total = 2
-        elif obj.role == Profile.ROLE_RECRUITER:
-            total = 5
-        else:
-            total = 9
-
-        completed = total - len(self.get_missingFields(obj))
-
-        return int((completed / total) * 100)
+       return calculate_profile_completion(
+        obj,
+        self.get_missingFields(obj),
+    )
 
     def get_skillsCount(self, obj):
         return obj.skills.count()
