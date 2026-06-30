@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from '../api/client';
+import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../api/client";
 
 type Skill = {
   id: number;
@@ -18,61 +18,65 @@ export default function SkillsSection({
   onUpdate,
 }: SkillsSectionProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [newSkill, setNewSkill] = useState('');
+  const [newSkill, setNewSkill] = useState("");
   const [localSkills, setLocalSkills] = useState<Skill[]>([]);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
+  const [isAdding, setIsAdding] = useState(false);
 
   const loadSkills = useCallback(async () => {
     try {
-      const res = await apiFetch('/profiles/skills');
-      if (res.ok) {
-        const data = await res.json();
-        setLocalSkills(data);
-        onUpdate(data.map((skill: Skill) => skill.name));
+      const res = await apiFetch("/profiles/skills");
+
+      if (!res.ok) {
+        return;
       }
+
+      const data = await res.json();
+      setLocalSkills(data);
+      onUpdate(data.map((skill: Skill) => skill.name));
     } catch (err) {
-      console.error('Failed to load skills:', err);
+      console.error("Failed to load skills:", err);
     }
   }, [onUpdate]);
 
-useEffect(() => {
-  async function loadInitialSkills() {
-    await loadSkills();
-  }
-
-  loadInitialSkills();
-}, [loadSkills]);
+  useEffect(() => {
+    loadSkills();
+  }, [loadSkills]);
 
   function handleClose() {
     setIsOpen(false);
-    setError('');
-    setNewSkill('');
+    setError("");
+    setNewSkill("");
   }
 
   async function handleAdd() {
     const skill = newSkill.trim();
-    if (!skill) return;
 
-    const alreadyExists = localSkills.some(
-      (item) => item.name.toLowerCase() === skill.toLowerCase()
-    );
-
-    if (alreadyExists) {
-      setError('This skill already exists.');
+    if (!skill) {
       return;
     }
 
-    setError('');
+    const alreadyExists = localSkills.some(
+      (item) => item.name.toLowerCase() === skill.toLowerCase(),
+    );
+
+    if (alreadyExists) {
+      setError("This skill already exists.");
+      return;
+    }
+
+    setError("");
+    setIsAdding(true);
 
     try {
-      const res = await apiFetch('/profiles/skills/add', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await apiFetch("/profiles/skills/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: skill }),
       });
 
       if (!res.ok) {
-        setError('Failed to add skill. Please try again.');
+        setError("Failed to add skill. Please try again.");
         return;
       }
 
@@ -82,45 +86,56 @@ useEffect(() => {
       setLocalSkills(updated);
       onUpdate(updated.map((item) => item.name));
       onProfileChange?.();
-      setNewSkill('');
+      setNewSkill("");
     } catch (err) {
-      console.error('Failed to add skill:', err);
-      setError('Unable to connect to server.');
+      console.error("Failed to add skill:", err);
+      setError("Unable to connect to server.");
+    } finally {
+      setIsAdding(false);
     }
   }
 
   async function handleDelete(skillId: number) {
     try {
       const res = await apiFetch(`/profiles/skills/${skillId}/delete`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
       if (!res.ok) {
-        console.error('Failed to delete skill');
+        setError("Failed to remove skill. Please try again.");
         return;
       }
 
       const updated = localSkills.filter((skill) => skill.id !== skillId);
+
       setLocalSkills(updated);
       onUpdate(updated.map((item) => item.name));
       onProfileChange?.();
     } catch (err) {
-      console.error('Failed to delete skill:', err);
+      console.error("Failed to delete skill:", err);
+      setError("Unable to remove skill.");
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
       handleAdd();
     }
   }
 
   return (
     <>
-      <div className="card">
+      <section id="skills" className="card form-section">
         <div className="card-header flex-between">
-          <h3>Skills</h3>
+          <div>
+            <p className="eyebrow">Skills</p>
+            <h3>Professional Skills</h3>
+            <p className="muted text-sm">
+              Add the technologies, tools, and strengths recruiters should find
+              you for.
+            </p>
+          </div>
 
           <button
             type="button"
@@ -133,21 +148,26 @@ useEffect(() => {
 
         <div className="card-body">
           {localSkills.length === 0 ? (
-            <p className="text-sm muted text-center">
-              No skills added yet.{' '}
+            <div className="empty-state">
+              <h3>No skills added yet</h3>
+              <p>
+                Add your first skill to make your profile easier to discover.
+              </p>
+
               <button
                 type="button"
-                className="link-button"
+                className="btn-primary"
                 onClick={() => setIsOpen(true)}
               >
-                Add your first skill
+                Add First Skill
               </button>
-            </p>
+            </div>
           ) : (
             <div className="skill-tags">
               {localSkills.map((skill) => (
                 <span key={skill.id} className="skill-tag">
                   {skill.name}
+
                   <button
                     type="button"
                     className="skill-remove"
@@ -160,22 +180,25 @@ useEffect(() => {
               ))}
             </div>
           )}
+
+          {error && <p className="form-error mt-2">{error}</p>}
         </div>
-      </div>
+      </section>
 
       {isOpen && (
         <div className="modal-overlay" onClick={handleClose}>
-          <div
-            className="modal-content"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Add Skills</h3>
+              <div>
+                <p className="eyebrow">Add Skill</p>
+                <h3>Add a professional skill</h3>
+              </div>
 
               <button
                 type="button"
                 className="modal-close"
                 onClick={handleClose}
+                aria-label="Close modal"
               >
                 ×
               </button>
@@ -183,16 +206,24 @@ useEffect(() => {
 
             <div className="modal-body">
               <div className="form-group">
-                <label>Skill Name</label>
+                <label>Skill name</label>
+                <p className="form-help">
+                  Add a skill recruiters may search for, such as Django, React,
+                  PostgreSQL, or REST API.
+                </p>
+
                 <input
                   type="text"
                   value={newSkill}
-                  onChange={(e) => setNewSkill(e.target.value)}
+                  onChange={(event) => setNewSkill(event.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="e.g. React, Python, Figma"
+                  placeholder="Example: Django REST Framework"
                   autoFocus
                 />
-                <p className="text-xs muted mt-1">Press Enter to add</p>
+
+                <p className="text-xs muted mt-1">
+                  Press Enter or click Add Skill.
+                </p>
               </div>
 
               {error && <p className="form-error text-sm">{error}</p>}
@@ -202,9 +233,9 @@ useEffect(() => {
                   type="button"
                   className="btn-primary"
                   onClick={handleAdd}
-                  disabled={!newSkill.trim()}
+                  disabled={!newSkill.trim() || isAdding}
                 >
-                  Add Skill
+                  {isAdding ? "Adding..." : "Add Skill"}
                 </button>
 
                 <button

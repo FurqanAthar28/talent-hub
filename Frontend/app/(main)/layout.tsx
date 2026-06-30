@@ -12,6 +12,7 @@ type AuthUser = {
   username: string;
   fullName: string;
   isStaff: boolean;
+  role?: string;
 };
 
 export default function MainLayout({
@@ -73,6 +74,10 @@ export default function MainLayout({
   if (loading) return null;
   if (!user) return null;
 
+  const userRole = user.role || (user.isStaff ? "admin" : "user");
+  const isAdmin = userRole === "admin";
+  const isRecruiter = userRole === "recruiter";
+
   return (
     <>
       <header className="app-header">
@@ -90,32 +95,34 @@ export default function MainLayout({
                 {uiContent.home}
               </Link>
 
-              <Link
-                href={uiContent.routeProfile}
-                className={pathname === uiContent.routeProfile ? "active" : ""}
-              >
-                {uiContent.profile}
-              </Link>
+              {!isAdmin && (
+                <Link
+                  href={uiContent.routeProfile}
+                  className={pathname === uiContent.routeProfile ? "active" : ""}
+                >
+                  {uiContent.profile}
+                </Link>
+              )}
 
-              {!user.isStaff && (
+              {(isRecruiter || isAdmin) && (
                 <Link
                   href={uiContent.routeConnections}
-                  className={pathname === uiContent.routeConnections ? "active" : ""}
+                  className={
+                    pathname === uiContent.routeConnections ? "active" : ""
+                  }
                 >
                   {uiContent.myNetwork}
                 </Link>
               )}
 
-              {!user.isStaff && (
-                <Link
-                  href={uiContent.routeMessages}
-                  className={pathname === uiContent.routeMessages ? "active" : ""}
-                >
-                  {uiContent.messages}
-                </Link>
-              )}
+              <Link
+                href={uiContent.routeMessages}
+                className={pathname === uiContent.routeMessages ? "active" : ""}
+              >
+                {uiContent.messages}
+              </Link>
 
-              {user.isStaff && (
+              {isAdmin && (
                 <Link
                   href={uiContent.routeAdmin}
                   className={pathname === uiContent.routeAdmin ? "active" : ""}

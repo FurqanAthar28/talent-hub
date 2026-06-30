@@ -1,4 +1,7 @@
 import type { DashboardData } from "../../../services/dashboard";
+import PortfolioStrengthCard from "./cards/PortfolioStrengthCard";
+import SkillsOverviewCard from "./cards/SkillsOverviewCard";
+import ProfileCompletionCard from "./cards/ProfileCompletionCard"; 
 
 type DashboardOverviewProps = {
   data: DashboardData;
@@ -7,30 +10,14 @@ type DashboardOverviewProps = {
 export default function DashboardOverview({ data }: DashboardOverviewProps) {
   return (
     <section className="dashboard-grid">
-      <article className="dashboard-card">
-        <span className="card-label">Profile</span>
-        <h2>{data.profileCompletion}% complete</h2>
-        <p>
-          {data.openToWork
-            ? "You are currently open to work."
-            : "Turn on Open to Work when you are ready."}
-        </p>
-      </article>
+      <ProfileCompletionCard data={data} />
 
-      <article className="dashboard-card">
-        <span className="card-label">Skills</span>
-        <h2>{data.skillsCount} skills</h2>
-        <p>Keep your skills updated so recruiters can find you easily.</p>
-      </article>
+      <SkillsOverviewCard skillsCount={data.skillsCount} />
 
-      <article className="dashboard-card">
-        <span className="card-label">Portfolio</span>
-        <h2>{data.projectsCount} projects</h2>
-        <p>
-          You have {data.experiencesCount} experience entries added to your
-          profile.
-        </p>
-      </article>
+      <PortfolioStrengthCard
+        projectsCount={data.projectsCount}
+        experiencesCount={data.experiencesCount}
+      />
     </section>
   );
 }

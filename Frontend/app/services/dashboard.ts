@@ -1,7 +1,7 @@
 import { apiFetch } from "../api/client";
 
 export type DashboardData = {
-  user: any;
+  role: string;
   fullName: string;
   headline: string;
   profileCompletion: number;
@@ -48,23 +48,25 @@ function getArrayLength(data: unknown): number {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [profileRes, skillsRes, projectsRes, experiencesRes] =
+  const [accountRes, profileRes, skillsRes, projectsRes, experiencesRes] =
     await Promise.all([
+      apiFetch("/accounts/me/"),
       apiFetch("/profiles/me/"),
       apiFetch("/profiles/skills/"),
       apiFetch("/profiles/projects/"),
       apiFetch("/profiles/experiences/"),
     ]);
 
+  const account = await readJson<any>(accountRes);
   const profile = await readJson<any>(profileRes);
   const skills = await readJson<unknown>(skillsRes);
   const projects = await readJson<unknown>(projectsRes);
   const experiences = await readJson<unknown>(experiencesRes);
 
   return {
-    user: profile,
-    fullName: profile.fullName || "User",
+    fullName: profile.fullName || account.fullName || account.full_name || "User",
     headline: profile.headline || "Manage your professional profile.",
+    role: account.role || profile.role || "user",
     profileCompletion:
       profile.profileCompletion ?? profile.profile_completion ?? 0,
     openToWork: profile.openToWork ?? profile.open_to_work ?? false,
@@ -108,7 +110,8 @@ export async function getAdminDashboardData(): Promise<AdminDashboardData> {
   return {
     totalUsers: stats.totalUsers ?? stats.total_users ?? 0,
     activeUsers: stats.activeUsers ?? stats.active_users ?? 0,
-    recruiters: stats.recruiters ?? stats.totalRecruiters ?? stats.total_recruiters ?? 0,
+    recruiters:
+      stats.recruiters ?? stats.totalRecruiters ?? stats.total_recruiters ?? 0,
     totalConnections:
       stats.totalConnections ??
       stats.total_connections ??

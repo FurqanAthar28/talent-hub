@@ -2,17 +2,16 @@
 
 import { useEffect, useState } from "react";
 import {
- getDashboardData,
- type DashboardData,
+  getDashboardData,
+  type DashboardData,
 } from "../../services/dashboard";
-import DashboardOverview from "./components/DashboardOverview";
-import DashboardHeader from "./components/DashboardHeader";
-import DashboardProfileCard from "./components/DashboardProfileCard";
-import DashboardStats from "./components/DashboardStats";
-import DashboardSidebar from "./components/DashboardSidebar";
-import DashboardRightSidebar from "./components/DashboardRightSidebar";
-import RecruiterDashboardSection from "./components/RecruiterDashboardSection";
+
 import AdminDashboardSection from "./components/AdminDashboardSection";
+import DashboardError from "./components/DashboardError";
+import DashboardLoading from "./components/DashboardLoading";
+import DashboardOverview from "./components/DashboardOverview";
+import DashboardQuickActions from "./components/DashboardQuickActions";
+import RecruiterDashboardSection from "./components/RecruiterDashboardSection";
 
 export default function DashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
@@ -25,7 +24,7 @@ export default function DashboardPage() {
         const data = await getDashboardData();
         setDashboardData(data);
       } catch {
-        setError("Unable to load dashboard data.");
+        setError("Unable to load dashboard data. Please refresh and try again.");
       } finally {
         setIsLoading(false);
       }
@@ -35,39 +34,47 @@ export default function DashboardPage() {
   }, []);
 
   if (isLoading) {
-    return (
-      <main className="page-shell">
-        <p>Loading dashboard...</p>
-      </main>
-    );
+    return <DashboardLoading />;
   }
 
   if (error || !dashboardData) {
-    return (
-      <main className="page-shell">
-        <p>{error || "Dashboard data was not found."}</p>
-      </main>
-    );
+    return <DashboardError message={error || "Dashboard data was not found."} />;
   }
 
-  const isRecruiter = dashboardData.user.role === "recruiter";
-  const isAdmin = dashboardData.user.role === "admin";
+  const isRecruiter = dashboardData.role === "recruiter";
+  const isAdmin = dashboardData.role === "admin";
 
   return (
     <main className="page-shell">
-      <section className="page-header">
+      <header className="dashboard-header">
         <div>
-          <p className="eyebrow">Dashboard</p>
-          <h1>Welcome back, {dashboardData.user.fullName}</h1>
-          <p>{dashboardData.user.headline}</p>
+          <p className="eyebrow">ProfessionalHub Dashboard</p>
+          <h1>Welcome back, {dashboardData.fullName}</h1>
+          <p>
+            Manage your profile, improve your visibility, and keep your
+            professional network active.
+          </p>
         </div>
+
+        <div className="flex gap-2">
+          <a href="/profile" className="btn-outline">
+            View Profile
+          </a>
+          <a href="/profile/edit" className="btn-primary">
+            Improve Profile
+          </a>
+        </div>
+      </header>
+
+      <section className="dashboard-content">
+        <DashboardOverview data={dashboardData} />
+
+        <DashboardQuickActions />
+
+        {(isRecruiter || isAdmin) && <RecruiterDashboardSection />}
+
+        {isAdmin && <AdminDashboardSection />}
       </section>
-
-      <DashboardOverview data={dashboardData} />
-
-      {(isRecruiter || isAdmin) && <RecruiterDashboardSection />}
-
-      {isAdmin && <AdminDashboardSection />}
     </main>
   );
 }

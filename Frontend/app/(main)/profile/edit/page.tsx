@@ -65,9 +65,9 @@ export default function EditProfilePage() {
   async function getErrorMessage(response: Response) {
     try {
       const data = (await response.json()) as ApiErrorResponse;
-      return data.message || content.genericError || "";
+      return data.message || content.genericError || "Something went wrong.";
     } catch {
-      return content.genericError || "";
+      return content.genericError || "Something went wrong.";
     }
   }
 
@@ -104,7 +104,7 @@ export default function EditProfilePage() {
         adminTitle: profile.adminTitle || "",
       });
     } catch {
-      setError(content.genericError || "");
+      setError(content.genericError || "Unable to load profile.");
     } finally {
       setLoading(false);
     }
@@ -113,9 +113,26 @@ export default function EditProfilePage() {
   useEffect(() => {
     loadProfile();
   }, []);
+  useEffect(() => {
+    if (loading) return;
 
+    const hash = window.location.hash;
+
+    if (!hash) return;
+
+    const targetElement = document.querySelector(hash);
+
+    if (!targetElement) return;
+
+    setTimeout(() => {
+      targetElement.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 100);
+  }, [loading]);
   function handleChange(
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
     const { name, value } = event.target;
 
@@ -130,7 +147,7 @@ export default function EditProfilePage() {
     setError("");
 
     if (!currentProfile) {
-      setError(content.genericError || "");
+      setError(content.genericError || "Unable to update profile.");
       return;
     }
 
@@ -178,7 +195,7 @@ export default function EditProfilePage() {
 
       router.push(content.routeProfile || ROUTES.PROFILE);
     } catch {
-      setError(content.genericError || "");
+      setError(content.genericError || "Unable to save profile.");
     } finally {
       setSaving(false);
     }
@@ -186,9 +203,11 @@ export default function EditProfilePage() {
 
   if (loading) {
     return (
-      <div className="app-main">
-        <div className="container">{content.loading}</div>
-      </div>
+      <main className="page-shell">
+        <section className="dashboard-section">
+          <p>{content.loading || "Loading profile..."}</p>
+        </section>
+      </main>
     );
   }
 
@@ -197,216 +216,290 @@ export default function EditProfilePage() {
     : "";
 
   return (
-    <div className="app-main">
-      <div className="container">
-        <div className="edit-profile-card">
-          <div className="edit-profile-header">
-            <h1>{content.editProfileTitle}</h1>
-            <p>{content.editProfileDescription}</p>
+    <main className="page-shell">
+      <header className="page-header">
+        <p className="eyebrow">Profile Editor</p>
+        <h1>{content.editProfileTitle || "Edit Profile"}</h1>
+        <p>
+          {content.editProfileDescription ||
+            "Keep your professional information complete and up to date."}
+        </p>
+      </header>
+
+      <form onSubmit={handleSubmit} className="edit-profile-form">
+        <section id="information" className="form-section">
+          <div className="form-section-header">
+            <p className="eyebrow">Basic Details</p>
+            <h2>Professional Information</h2>
+            <p>
+              Your name, headline, and location appear on your public profile.
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="edit-profile-form">
+          <div className="form-group">
+            <label>{content.fullName || "Full Name"}</label>
+            <input
+              type="text"
+              name="fullName"
+              value={formData.fullName}
+              onChange={handleChange}
+              placeholder={
+                content.fullNamePlaceholder || "Enter your full name"
+              }
+            />
+          </div>
+
+          <div className="form-group">
+            <label>{content.headline || "Professional Headline"}</label>
+            <p className="form-help">
+              Example: Backend Developer | Django | PostgreSQL
+            </p>
+            <input
+              type="text"
+              name="headline"
+              value={formData.headline}
+              onChange={handleChange}
+              placeholder={content.headlinePlaceholder || "Write your headline"}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>{content.location || "Location"}</label>
+            <input
+              type="text"
+              name="location"
+              value={formData.location}
+              onChange={handleChange}
+              placeholder={content.locationPlaceholder || "City, Country"}
+            />
+          </div>
+        </section>
+
+        <section id="about" className="form-section">
+          <div className="form-section-header">
+            <p className="eyebrow">About</p>
+            <h2>Professional Bio</h2>
+            <p>Write a short summary that explains your skills and goals.</p>
+          </div>
+
+          <div className="form-group">
+            <label>{content.bio || "Bio"}</label>
+            <textarea
+              name="bio"
+              value={formData.bio}
+              onChange={handleChange}
+              placeholder={
+                content.bioPlaceholder || "Tell people about yourself"
+              }
+              rows={6}
+            />
+
+            <div className="ai-assist-row">
+              <p className="character-count">
+                {formData.bio.length} characters
+              </p>
+
+              <button type="button" className="btn-secondary btn-sm" disabled>
+                AI Assist Coming Soon
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {currentProfile?.role === "candidate" && (
+          <section id="social" className="form-section">
+            <div className="form-section-header">
+              <p className="eyebrow">Online Presence</p>
+              <h2>Professional Links</h2>
+              <p>Add links that help recruiters verify your work.</p>
+            </div>
+
             <div className="form-group">
-              <label>{content.fullName}</label>
+              <label>{content.linkedinUrl || "LinkedIn URL"}</label>
               <input
                 type="text"
-                name="fullName"
-                value={formData.fullName}
+                name="linkedinUrl"
+                value={formData.linkedinUrl}
                 onChange={handleChange}
-                placeholder={content.fullNamePlaceholder}
+                placeholder={
+                  content.linkedinUrlPlaceholder ||
+                  "https://linkedin.com/in/..."
+                }
               />
             </div>
 
             <div className="form-group">
-              <label>{content.headline}</label>
+              <label>{content.githubUrl || "GitHub URL"}</label>
               <input
                 type="text"
-                name="headline"
-                value={formData.headline}
+                name="githubUrl"
+                value={formData.githubUrl}
                 onChange={handleChange}
-                placeholder={content.headlinePlaceholder}
+                placeholder={
+                  content.githubUrlPlaceholder || "https://github.com/..."
+                }
               />
             </div>
 
             <div className="form-group">
-              <label>{content.location}</label>
+              <label>{content.portfolioUrl || "Portfolio URL"}</label>
               <input
                 type="text"
-                name="location"
-                value={formData.location}
+                name="portfolioUrl"
+                value={formData.portfolioUrl}
                 onChange={handleChange}
-                placeholder={content.locationPlaceholder}
+                placeholder={
+                  content.portfolioUrlPlaceholder || "https://yourportfolio.com"
+                }
               />
             </div>
+          </section>
+        )}
 
-            <div className="form-group">
-              <label>{content.bio}</label>
-              <textarea
-                name="bio"
-                value={formData.bio}
-                onChange={handleChange}
-                placeholder={content.bioPlaceholder}
-                rows={5}
-              />
+        {currentProfile?.role === "candidate" && (
+          <section id="resume" className="form-section">
+            <div className="form-section-header">
+              <p className="eyebrow">Resume</p>
+              <h2>{content.cvResume || "CV / Resume"}</h2>
+              <p>
+                Upload your latest resume so recruiters can review your profile.
+              </p>
             </div>
 
-            {currentProfile?.role === "candidate" && (
-              <>
-                <div className="form-group">
-                  <label>{content.linkedinUrl}</label>
-                  <input
-                    type="text"
-                    name="linkedinUrl"
-                    value={formData.linkedinUrl}
-                    onChange={handleChange}
-                    placeholder={content.linkedinUrlPlaceholder}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>{content.githubUrl}</label>
-                  <input
-                    type="text"
-                    name="githubUrl"
-                    value={formData.githubUrl}
-                    onChange={handleChange}
-                    placeholder={content.githubUrlPlaceholder}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>{content.portfolioUrl}</label>
-                  <input
-                    type="text"
-                    name="portfolioUrl"
-                    value={formData.portfolioUrl}
-                    onChange={handleChange}
-                    placeholder={content.portfolioUrlPlaceholder}
-                  />
-                </div>
-              </>
-            )}
-
-            {currentProfile?.role === "recruiter" && (
-              <div className="role-specific-form">
-                <div className="form-group">
-                  <label>{content.companyName}</label>
-                  <input
-                    type="text"
-                    name="companyName"
-                    value={formData.companyName}
-                    onChange={handleChange}
-                    placeholder={content.companyNamePlaceholder}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>{content.companyWebsite}</label>
-                  <input
-                    type="url"
-                    name="companyWebsite"
-                    value={formData.companyWebsite}
-                    onChange={handleChange}
-                    placeholder={content.companyWebsitePlaceholder}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>{content.companyLocation}</label>
-                  <input
-                    type="text"
-                    name="companyLocation"
-                    value={formData.companyLocation}
-                    onChange={handleChange}
-                    placeholder={content.companyLocationPlaceholder}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label>{content.hiringTitle}</label>
-                  <input
-                    type="text"
-                    name="hiringTitle"
-                    value={formData.hiringTitle}
-                    onChange={handleChange}
-                    placeholder={content.hiringTitlePlaceholder}
-                  />
-                </div>
-              </div>
-            )}
-
-            {currentProfile?.role === "admin" && (
-              <div className="form-group">
-                <label>{content.adminTitle}</label>
-                <input
-                  type="text"
-                  name="adminTitle"
-                  value={formData.adminTitle}
-                  onChange={handleChange}
-                  placeholder={content.adminTitlePlaceholder}
-                />
-              </div>
-            )}
-
-            {currentProfile?.role === "candidate" && (
-              <div className="form-group">
-                <label>{content.cvResume}</label>
-
-                {currentProfile?.cvUrl && (
-                  <a
-                    href={currentCvUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="quick-link"
-                  >
-                    {content.viewCurrentCv}
-                  </a>
-                )}
-
-                <div className="file-upload-box">
-                  <input
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    onChange={(event) =>
-                      setCvFile(event.target.files?.[0] || null)
-                    }
-                  />
-
-                  <p className="file-upload-title">
-                    {content.cvReplaceTitle}
-                  </p>
-
-                  <p className="text-xs muted mt-1">
-                    {content.cvUploadHint}
-                  </p>
-
-                  {cvFile && (
-                    <p className="text-sm mt-1 success-text">
-                      {content.selectedFileLabel}: {cvFile.name}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {error && <div className="form-error">{error}</div>}
-
-            <div className="edit-profile-actions">
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => router.push(content.routeProfile || ROUTES.PROFILE)}
+            {currentProfile?.cvUrl && (
+              <a
+                href={currentCvUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="quick-link"
               >
-                {content.cancel}
-              </button>
+                {content.viewCurrentCv || "View current CV"}
+              </a>
+            )}
 
-              <button type="submit" className="btn-primary" disabled={saving}>
-                {saving ? content.saving : content.saveChanges}
-              </button>
+            <div className="file-upload-box">
+              <input
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={(event) => setCvFile(event.target.files?.[0] || null)}
+              />
+
+              <p className="file-upload-title">
+                {content.cvReplaceTitle || "Replace your current CV"}
+              </p>
+
+              <p className="text-xs muted mt-1">
+                {content.cvUploadHint || "PDF files only."}
+              </p>
+
+              {cvFile && (
+                <p className="text-sm mt-1 success-text">
+                  {content.selectedFileLabel || "Selected file"}: {cvFile.name}
+                </p>
+              )}
             </div>
-          </form>
+          </section>
+        )}
+
+        {currentProfile?.role === "recruiter" && (
+          <section id="company" className="form-section">
+            <div className="form-section-header">
+              <p className="eyebrow">Recruiter Profile</p>
+              <h2>Company Information</h2>
+              <p>Help candidates understand your company and hiring needs.</p>
+            </div>
+
+            <div className="form-group">
+              <label>{content.companyName || "Company Name"}</label>
+              <input
+                type="text"
+                name="companyName"
+                value={formData.companyName}
+                onChange={handleChange}
+                placeholder={content.companyNamePlaceholder || "Company name"}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>{content.companyWebsite || "Company Website"}</label>
+              <input
+                type="url"
+                name="companyWebsite"
+                value={formData.companyWebsite}
+                onChange={handleChange}
+                placeholder={
+                  content.companyWebsitePlaceholder || "https://company.com"
+                }
+              />
+            </div>
+
+            <div className="form-group">
+              <label>{content.companyLocation || "Company Location"}</label>
+              <input
+                type="text"
+                name="companyLocation"
+                value={formData.companyLocation}
+                onChange={handleChange}
+                placeholder={
+                  content.companyLocationPlaceholder || "City, Country"
+                }
+              />
+            </div>
+
+            <div className="form-group">
+              <label>{content.hiringTitle || "Hiring Title"}</label>
+              <input
+                type="text"
+                name="hiringTitle"
+                value={formData.hiringTitle}
+                onChange={handleChange}
+                placeholder={
+                  content.hiringTitlePlaceholder || "Technical Recruiter"
+                }
+              />
+            </div>
+          </section>
+        )}
+
+        {currentProfile?.role === "admin" && (
+          <section id="admin" className="form-section">
+            <div className="form-section-header">
+              <p className="eyebrow">Admin Profile</p>
+              <h2>Platform Role</h2>
+              <p>This information appears in admin-related areas.</p>
+            </div>
+
+            <div className="form-group">
+              <label>{content.adminTitle || "Admin Title"}</label>
+              <input
+                type="text"
+                name="adminTitle"
+                value={formData.adminTitle}
+                onChange={handleChange}
+                placeholder={content.adminTitlePlaceholder || "Platform Admin"}
+              />
+            </div>
+          </section>
+        )}
+
+        {error && <div className="form-error">{error}</div>}
+
+        <div className="edit-profile-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => router.push(content.routeProfile || ROUTES.PROFILE)}
+          >
+            {content.cancel || "Cancel"}
+          </button>
+
+          <button type="submit" className="btn-primary" disabled={saving}>
+            {saving
+              ? content.saving || "Saving..."
+              : content.saveChanges || "Save Changes"}
+          </button>
         </div>
-      </div>
-    </div>
+      </form>
+    </main>
   );
 }
