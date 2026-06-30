@@ -283,7 +283,9 @@ class SendConnectionRequestSerializer(serializers.Serializer):
             )
 
         if not is_network_user(receiver):
-            raise serializers.ValidationError("This account is not available for connections")
+            raise serializers.ValidationError(
+                "This account is not available for connections"
+            )
 
         if Connection.objects.filter(user=sender, connected_user=receiver).exists():
             raise serializers.ValidationError("You are already connected")
@@ -385,12 +387,18 @@ class ConversationSerializer(serializers.ModelSerializer):
         profile = get_user_profile(self.get_participant(obj))
         return profile.headline if profile else ""
 
+    def get_last_message(self, obj):
+        if not hasattr(obj, "_cached_last_message"):
+            obj._cached_last_message = obj.messages.order_by("-created_at").first()
+
+        return obj._cached_last_message
+
     def get_lastMessage(self, obj):
-        message = obj.messages.order_by("-created_at").first()
+        message = self.get_last_message(obj)
         return message.body if message else ""
 
     def get_lastMessageAt(self, obj):
-        message = obj.messages.order_by("-created_at").first()
+        message = self.get_last_message(obj)
         return message.created_at if message else None
 
     def get_unreadCount(self, obj):
@@ -458,3 +466,98 @@ class SendMessageSerializer(serializers.Serializer):
             raise serializers.ValidationError("Message must be 2000 characters or less")
 
         return body
+
+
+class AdminMessageSerializer(serializers.ModelSerializer):
+    senderId = serializers.IntegerField(source="sender.id", read_only=True)
+    senderName = serializers.SerializerMethodField()
+    senderEmail = serializers.EmailField(source="sender.email", read_only=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    readAt = serializers.DateTimeField(source="read_at", read_only=True)
+
+    class Meta:
+        model = Message
+        fields = [
+            "id",
+            "conversation",
+            "senderId",
+            "senderName",
+            "senderEmail",
+            "body",
+            "createdAt",
+            "readAt",
+        ]
+
+    def get_senderName(self, obj):
+        return get_user_display_name(obj.sender)
+
+
+class AdminConversationSerializer(serializers.ModelSerializer):
+    participantOneId = serializers.IntegerField(source="participant_one.id", read_only=True)
+    participantOneName = serializers.SerializerMethodField()
+    participantOneEmail = serializers.EmailField(
+        source="participant_one.email",
+        read_only=True,
+    )
+    participantTwoId = serializers.IntegerField(source="participant_two.id", read_only=True)
+    participantTwoName = serializers.SerializerMethodField()
+    participantTwoEmail = serializers.EmailField(
+        source="participant_two.email",
+        read_only=True,
+    )
+    lastMessage = serializers.SerializerMethodField()
+    lastMessageAt = serializers.SerializerMethodField()
+    messageCount = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
+
+    class Meta:
+        model = Conversation
+        fields = [
+            "id",
+            "participantOneId",
+            "participantOneName",
+            "participantOneEmail",
+            "participantTwoId",
+            "participantTwoName",
+            "participantTwoEmail",
+            "lastMessage",
+            "lastMessageAt",
+            "messageCount",
+            "createdAt",
+            "updatedAt",
+        ]
+
+    def get_participantOneName(self, obj):
+        return get_user_display_name(obj.participant_one)
+
+    def get_participantTwoName(self, obj):
+        return get_user_display_name(obj.participant_two)
+
+    def get_last_message(self, obj):
+        if not hasattr(obj, "_cached_admin_last_message"):
+            obj._cached_admin_last_message = obj.messages.order_by("-created_at").first()
+
+        return obj._cached_admin_last_message
+
+    def get_lastMessage(self, obj):
+        message = self.get_last_message(obj)
+        return message.body if message else ""
+
+    def get_lastMessageAt(self, obj):
+        message = self.get_last_message(obj)
+        return message.created_at if message else None
+
+    def get_messageCount(self, obj):
+        return obj.messages.count()
+
+
+class AdminConversationDetailSerializer(AdminConversationSerializer):
+    messages = serializers.SerializerMethodField()
+
+    class Meta(AdminConversationSerializer.Meta):
+        fields = AdminConversationSerializer.Meta.fields + ["messages"]
+
+    def get_messages(self, obj):
+        messages = obj.messages.select_related("sender").order_by("created_at")
+        return AdminMessageSerializer(messages, many=True).data

@@ -103,6 +103,7 @@ INSTALLED_APPS = [
     'connections',
     "rest_framework_simplejwt.token_blacklist",
     'app_config',
+    
 ]
 
 MIDDLEWARE = [
