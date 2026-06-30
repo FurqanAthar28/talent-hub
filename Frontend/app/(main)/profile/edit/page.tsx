@@ -9,6 +9,8 @@ import { API_ROUTES } from "../../../config/apiRoutes";
 import { ROUTES } from "../../../config/routes";
 import { buildMediaUrl } from "../../../utils/media";
 import BasicInfoSection from "./components/BasicInfoSection";
+import AboutSection from "./components/AboutSection";
+import SocialLinksSection from "./components/SocialLinksSection";
 
 type Profile = {
   role: "candidate" | "recruiter" | "admin";
@@ -234,86 +236,18 @@ export default function EditProfilePage() {
   handleChange={handleChange}
 />
 
-        <section id="about" className="form-section">
-          <div className="form-section-header">
-            <p className="eyebrow">About</p>
-            <h2>Professional Bio</h2>
-            <p>Write a short summary that explains your skills and goals.</p>
-          </div>
-
-          <div className="form-group">
-            <label>{content.bio || "Bio"}</label>
-            <textarea
-              name="bio"
-              value={formData.bio}
-              onChange={handleChange}
-              placeholder={
-                content.bioPlaceholder || "Tell people about yourself"
-              }
-              rows={6}
-            />
-
-            <div className="ai-assist-row">
-              <p className="character-count">
-                {formData.bio.length} characters
-              </p>
-
-              <button type="button" className="btn-secondary btn-sm" disabled>
-                AI Assist Coming Soon
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {currentProfile?.role === "candidate" && (
-          <section id="social" className="form-section">
-            <div className="form-section-header">
-              <p className="eyebrow">Online Presence</p>
-              <h2>Professional Links</h2>
-              <p>Add links that help recruiters verify your work.</p>
-            </div>
-
-            <div className="form-group">
-              <label>{content.linkedinUrl || "LinkedIn URL"}</label>
-              <input
-                type="text"
-                name="linkedinUrl"
-                value={formData.linkedinUrl}
-                onChange={handleChange}
-                placeholder={
-                  content.linkedinUrlPlaceholder ||
-                  "https://linkedin.com/in/..."
-                }
-              />
-            </div>
-
-            <div className="form-group">
-              <label>{content.githubUrl || "GitHub URL"}</label>
-              <input
-                type="text"
-                name="githubUrl"
-                value={formData.githubUrl}
-                onChange={handleChange}
-                placeholder={
-                  content.githubUrlPlaceholder || "https://github.com/..."
-                }
-              />
-            </div>
-
-            <div className="form-group">
-              <label>{content.portfolioUrl || "Portfolio URL"}</label>
-              <input
-                type="text"
-                name="portfolioUrl"
-                value={formData.portfolioUrl}
-                onChange={handleChange}
-                placeholder={
-                  content.portfolioUrlPlaceholder || "https://yourportfolio.com"
-                }
-              />
-            </div>
-          </section>
-        )}
+       <AboutSection
+  content={content}
+  formData={formData}
+  handleChange={handleChange}
+/>
+{currentProfile?.role === "candidate" && (
+  <SocialLinksSection
+    content={content}
+    formData={formData}
+    handleChange={handleChange}
+  />
+)}
 
         {currentProfile?.role === "candidate" && (
           <section id="resume" className="form-section">
