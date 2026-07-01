@@ -12,6 +12,10 @@ import BasicInfoSection from "./components/BasicInfoSection";
 import AboutSection from "./components/AboutSection";
 import SocialLinksSection from "./components/SocialLinksSection";
 import ResumeSection from "./components/ResumeSection";
+import SkillsSection from "./components/SkillsSection";
+import ProjectsSection from "./components/projects/ProjectsSection";
+import ExperienceSection from "./components/experience/ExperienceSection";
+
 type Profile = {
   role: "candidate" | "recruiter" | "admin";
   fullName: string;
@@ -116,24 +120,36 @@ export default function EditProfilePage() {
   useEffect(() => {
     loadProfile();
   }, []);
+
   useEffect(() => {
-    if (loading) return;
+    function scrollToHash() {
+      const hash = window.location.hash;
 
-    const hash = window.location.hash;
+      if (!hash) return;
 
-    if (!hash) return;
+      const targetElement = document.querySelector(hash);
 
-    const targetElement = document.querySelector(hash);
+      if (!targetElement) return;
 
-    if (!targetElement) return;
+      setTimeout(() => {
+        targetElement.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 100);
+    }
 
-    setTimeout(() => {
-      targetElement.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    }, 100);
+    if (!loading) {
+      scrollToHash();
+    }
+
+    window.addEventListener("hashchange", scrollToHash);
+
+    return () => {
+      window.removeEventListener("hashchange", scrollToHash);
+    };
   }, [loading]);
+
   function handleChange(
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
@@ -231,32 +247,42 @@ export default function EditProfilePage() {
 
       <form onSubmit={handleSubmit} className="edit-profile-form">
         <BasicInfoSection
-  content={content}
-  formData={formData}
-  handleChange={handleChange}
-/>
+          content={content}
+          formData={formData}
+          handleChange={handleChange}
+        />
 
-       <AboutSection
-  content={content}
-  formData={formData}
-  handleChange={handleChange}
-/>
-{currentProfile?.role === "candidate" && (
-  <SocialLinksSection
-    content={content}
-    formData={formData}
-    handleChange={handleChange}
-  />
-)}
+        <AboutSection
+          content={content}
+          formData={formData}
+          handleChange={handleChange}
+        />
 
         {currentProfile?.role === "candidate" && (
-  <ResumeSection
-    content={content}
-    currentCvUrl={currentCvUrl}
-    cvFile={cvFile}
-    setCvFile={setCvFile}
-  />
-)}
+          <SocialLinksSection
+            content={content}
+            formData={formData}
+            handleChange={handleChange}
+          />
+        )}
+
+        {currentProfile?.role === "candidate" && (
+          <ResumeSection
+            content={content}
+            currentCvUrl={currentCvUrl}
+            cvFile={cvFile}
+            setCvFile={setCvFile}
+          />
+        )}
+
+        {currentProfile?.role === "candidate" && (
+          <SkillsSection content={content} />
+        )}
+
+        {currentProfile?.role === "candidate" && <ProjectsSection />}
+
+        {currentProfile?.role === "candidate" && <ExperienceSection />}
+
         {currentProfile?.role === "recruiter" && (
           <section id="company" className="form-section">
             <div className="form-section-header">
