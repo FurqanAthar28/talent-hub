@@ -341,22 +341,26 @@ function validateUiContent(data: UiContent) {
 }
 
 export async function fetchUiContent(): Promise<UiContent> {
-  const res = await apiFetch(
-    "/app-config/ui-content/",
-    undefined,
-    { redirectOnUnauthorized: false }
-  );
+  const fallbackContent = Object.fromEntries(
+    REQUIRED_UI_CONTENT_KEYS.map((key) => [key, key])
+  ) as UiContent;
 
-  if (!res.ok) {
-    const responseText = await res.text();
-    throw new Error
-    (
-      `Unable to load UI content. Status: ${res.status}. ${responseText}`
+  try {
+    const res = await apiFetch(
+      "/app-config/ui-content/",
+      undefined,
+      { redirectOnUnauthorized: false }
     );
+
+    if (!res.ok) {
+      return fallbackContent;
+    }
+
+    const data = (await res.json()) as UiContent;
+    validateUiContent(data);
+
+    return data;
+  } catch {
+    return fallbackContent;
   }
-
-  const data = await res.json();
-  validateUiContent(data);
-
-  return data;
 }

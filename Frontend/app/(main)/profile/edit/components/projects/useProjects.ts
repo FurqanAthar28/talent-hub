@@ -35,7 +35,11 @@ export function useProjects({
   }, [onCountChange]);
 
   useEffect(() => {
-    loadProjects();
+    async function loadInitialData() {
+      await loadProjects();
+    }
+
+    void loadInitialData();
   }, [loadProjects]);
 
   async function saveProject(

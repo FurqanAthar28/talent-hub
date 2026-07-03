@@ -56,7 +56,11 @@ export default function ProjectsSection({
   }, [onCountChange]);
 
   useEffect(() => {
-    loadProjects();
+    async function loadInitialData() {
+      await loadProjects();
+    }
+
+    void loadInitialData();
   }, [loadProjects]);
 
   function handleFormChange(
@@ -373,7 +377,11 @@ export default function ProjectsSection({
                   onClick={handleSave}
                   disabled={!form.title.trim() || saving}
                 >
-                  {saving ? "Saving..." : editing ? "Update Project" : "Save Project"}
+                  {saving
+                    ? "Saving..."
+                    : editing
+                      ? "Update Project"
+                      : "Save Project"}
                 </button>
 
                 <button

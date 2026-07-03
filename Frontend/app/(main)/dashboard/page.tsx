@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import {
-  getDashboardData,
-  type DashboardData,
-} from "../../services/dashboard";
+import { getDashboardData, type DashboardData } from "../../services/dashboard";
 
 import DashboardError from "./components/DashboardError";
 import DashboardLoading from "./components/DashboardLoading";
@@ -17,7 +15,9 @@ import RecruiterDashboardSection from "./components/RecruiterDashboardSection";
 export default function DashboardPage() {
   const router = useRouter();
 
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -33,7 +33,9 @@ export default function DashboardPage() {
 
         setDashboardData(data);
       } catch {
-        setError("Unable to load dashboard data. Please refresh and try again.");
+        setError(
+          "Unable to load dashboard data. Please refresh and try again.",
+        );
       } finally {
         setIsLoading(false);
       }
@@ -47,7 +49,9 @@ export default function DashboardPage() {
   }
 
   if (error || !dashboardData) {
-    return <DashboardError message={error || "Dashboard data was not found."} />;
+    return (
+      <DashboardError message={error || "Dashboard data was not found."} />
+    );
   }
 
   const isRecruiter = dashboardData.role === "recruiter";
@@ -65,12 +69,12 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex gap-2">
-          <a href="/profile" className="btn-outline">
+          <Link href="/profile" className="btn-outline">
             View Profile
-          </a>
-          <a href="/profile/edit" className="btn-primary">
+          </Link>
+          <Link href="/profile/edit#information" className="btn-primary">
             Improve Profile
-          </a>
+          </Link>
         </div>
       </header>
 
@@ -84,3 +88,4 @@ export default function DashboardPage() {
     </main>
   );
 }
+

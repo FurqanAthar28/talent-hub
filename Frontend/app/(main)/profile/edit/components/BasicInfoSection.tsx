@@ -1,5 +1,3 @@
-import type { UiContent } from "../../../../api/ui-content";
-
 type FormData = {
   fullName: string;
   headline: string;
@@ -10,7 +8,7 @@ type Props = {
   content: Record<string, string | undefined>;
   formData: FormData;
   handleChange: (
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => void;
 };
 
@@ -41,7 +39,7 @@ export default function BasicInfoSection({
       <div className="form-group">
         <label>{content.headline || "Professional Headline"}</label>
         <p className="form-help">
-          Example: Backend Developer | Django | PostgreSQL
+          `r`n Example: Backend Developer | Django | PostgreSQL`r`n{" "}
         </p>
         <input
           type="text"

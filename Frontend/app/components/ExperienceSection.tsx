@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from '../api/client';
+import { useCallback, useEffect, useState } from "react";
+import { apiFetch } from "../api/client";
 
 type Experience = {
   id: number;
@@ -25,20 +25,20 @@ type FormState = {
 };
 
 const emptyForm: FormState = {
-  title: '',
-  company: '',
-  location: '',
-  startDate: '',
-  endDate: '',
+  title: "",
+  company: "",
+  location: "",
+  startDate: "",
+  endDate: "",
   current: false,
-  description: '',
+  description: "",
 };
 
 function getExperienceDuration(experience: Experience) {
-  const startDate = experience.start_date || 'Start date';
+  const startDate = experience.start_date || "Start date";
   const endDate = experience.current
-    ? 'Present'
-    : experience.end_date || 'End date';
+    ? "Present"
+    : experience.end_date || "End date";
 
   return `${startDate} — ${endDate}`;
 }
@@ -54,12 +54,12 @@ export default function ExperienceSection({
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<Experience | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   const loadExperiences = useCallback(async () => {
     try {
-      const res = await apiFetch('/profiles/experiences');
+      const res = await apiFetch("/profiles/experiences");
 
       if (res.ok) {
         const data = await res.json();
@@ -67,24 +67,28 @@ export default function ExperienceSection({
         onCountChange?.(data.length);
       }
     } catch (err) {
-      console.error('Failed to load experiences:', err);
+      console.error("Failed to load experiences:", err);
     }
   }, [onCountChange]);
 
   useEffect(() => {
-    loadExperiences();
+    async function loadInitialData() {
+      await loadExperiences();
+    }
+
+    void loadInitialData();
   }, [loadExperiences]);
 
   function handleFormChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
 
     setForm((prev) => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-      ...(name === 'current' && checked ? { endDate: '' } : {}),
+      [name]: type === "checkbox" ? checked : value,
+      ...(name === "current" && checked ? { endDate: "" } : {}),
     }));
   }
 
@@ -105,42 +109,42 @@ export default function ExperienceSection({
       setForm(emptyForm);
     }
 
-    setError('');
+    setError("");
     setIsOpen(true);
   }
 
   function handleClose() {
     setIsOpen(false);
-    setError('');
+    setError("");
   }
 
   async function handleSave() {
     if (!form.title.trim() || !form.company.trim()) return;
 
     setSaving(true);
-    setError('');
+    setError("");
 
     try {
       const url = editing
         ? `/profiles/experiences/${editing.id}/update`
-        : '/profiles/experiences/add';
+        : "/profiles/experiences/add";
 
       const res = await apiFetch(url, {
-        method: editing ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: editing ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: form.title.trim(),
           company: form.company.trim(),
           location: form.location.trim(),
           start_date: form.startDate.trim(),
-          end_date: form.current ? '' : form.endDate.trim(),
+          end_date: form.current ? "" : form.endDate.trim(),
           current: form.current,
           description: form.description.trim(),
         }),
       });
 
       if (!res.ok) {
-        setError('Failed to save experience. Please try again.');
+        setError("Failed to save experience. Please try again.");
         return;
       }
 
@@ -148,8 +152,8 @@ export default function ExperienceSection({
       onProfileChange?.();
       handleClose();
     } catch (err) {
-      console.error('Failed to save experience:', err);
-      setError('Unable to connect to server.');
+      console.error("Failed to save experience:", err);
+      setError("Unable to connect to server.");
     } finally {
       setSaving(false);
     }
@@ -158,18 +162,18 @@ export default function ExperienceSection({
   async function handleDelete(id: number) {
     try {
       const res = await apiFetch(`/profiles/experiences/${id}/delete`, {
-        method: 'DELETE',
+        method: "DELETE",
       });
 
       if (!res.ok) {
-        console.error('Failed to delete experience');
+        console.error("Failed to delete experience");
         return;
       }
 
       await loadExperiences();
       onProfileChange?.();
     } catch (err) {
-      console.error('Failed to delete experience:', err);
+      console.error("Failed to delete experience:", err);
     }
   }
 
@@ -266,7 +270,7 @@ export default function ExperienceSection({
             <div className="modal-header">
               <div>
                 <p className="eyebrow">Experience Details</p>
-                <h3>{editing ? 'Edit Experience' : 'Add Experience'}</h3>
+                <h3>{editing ? "Edit Experience" : "Add Experience"}</h3>
               </div>
 
               <button
@@ -372,9 +376,11 @@ export default function ExperienceSection({
                   type="button"
                   className="btn-primary"
                   onClick={handleSave}
-                  disabled={!form.title.trim() || !form.company.trim() || saving}
+                  disabled={
+                    !form.title.trim() || !form.company.trim() || saving
+                  }
                 >
-                  {saving ? 'Saving...' : 'Save Experience'}
+                  {saving ? "Saving..." : "Save Experience"}
                 </button>
 
                 <button

@@ -6,6 +6,8 @@ import Link from "next/link";
 
 import { apiFetch } from "../../api/client";
 import { fetchUiContent, type UiContent } from "../../api/ui-content";
+import { API_ROUTES } from "../../config/apiRoutes";
+import { ROUTES } from "../../config/routes";
 
 export default function SignInPage() {
   const router = useRouter();
@@ -21,13 +23,8 @@ export default function SignInPage() {
 
   useEffect(() => {
     async function loadUiContent() {
-      try {
-        const data = await fetchUiContent();
-        setUiContent(data);
-      } catch (error) {
-        console.error("Failed to load signin UI content:", error);
-        setError(error instanceof Error ? error.message : "");
-      }
+      const data = await fetchUiContent();
+      setUiContent(data);
     }
 
     loadUiContent();
@@ -37,7 +34,9 @@ export default function SignInPage() {
     setError("");
 
     if (!formData.email.trim() || !formData.password) {
-      setError(uiContent.signinMissingFields);
+      setError(
+        uiContent.signinMissingFields || "Please enter your email and password."
+      );
       return;
     }
 
@@ -45,7 +44,7 @@ export default function SignInPage() {
 
     try {
       const res = await apiFetch(
-        uiContent.apiSignin,
+        API_ROUTES.ACCOUNTS.SIGNIN,
         {
           method: "POST",
           headers: {
@@ -61,18 +60,27 @@ export default function SignInPage() {
       if (!res.ok) {
         if (data.message === uiContent.emailVerificationRequired) {
           const params = new URLSearchParams({ email: formData.email });
-          router.replace(`${uiContent.routeVerifyEmail}?${params.toString()}`);
+          router.replace(
+            `${uiContent.routeVerifyEmail || "/verify-email"}?${params.toString()}`
+          );
           return;
         }
 
-        setError(data.message || data.error || uiContent.signinFailed);
+        setError(
+          data.message ||
+            data.error ||
+            uiContent.signinFailed ||
+            "Sign in failed. Please try again."
+        );
         return;
       }
 
-      router.replace(uiContent.routeDashboard);
+      router.replace(uiContent.routeDashboard || ROUTES.DASHBOARD);
     } catch (err) {
       console.error("Signin error:", err);
-      setError(uiContent.serverConnectionError);
+      setError(
+        uiContent.serverConnectionError || "Unable to connect to server."
+      );
     } finally {
       setLoading(false);
     }
@@ -94,24 +102,22 @@ export default function SignInPage() {
     }));
   }
 
-  if (!uiContent.signin) return null;
-
   return (
     <main className="auth-page">
       <div className="auth-card">
         <div className="auth-card-header">
           <Link href="/" className="auth-logo">
-            {uiContent.appName}
+            {uiContent.appName || "ProfessionalHub"}
           </Link>
 
-          <h1>{uiContent.signinWelcome}</h1>
+          <h1>{uiContent.signinWelcome || "Welcome back"}</h1>
 
-          <p>{uiContent.signinIntro}</p>
+          <p>{uiContent.signinIntro || "Sign in to continue."}</p>
         </div>
 
         <div className="auth-clean-form">
           <div className="form-group">
-            <label htmlFor="email">{uiContent.email}</label>
+            <label htmlFor="email">{uiContent.email || "Email"}</label>
 
             <input
               id="email"
@@ -120,13 +126,15 @@ export default function SignInPage() {
               value={formData.email}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={uiContent.emailPlaceholder}
+              placeholder={uiContent.emailPlaceholder || "Enter your email"}
               autoComplete="email"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">{uiContent.password}</label>
+            <label htmlFor="password">
+              {uiContent.password || "Password"}
+            </label>
 
             <input
               id="password"
@@ -135,18 +143,16 @@ export default function SignInPage() {
               value={formData.password}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={uiContent.passwordPlaceholder}
+              placeholder={uiContent.passwordPlaceholder || "Enter your password"}
               autoComplete="current-password"
             />
           </div>
 
-          {uiContent.forgotPassword && (
-            <p className="text-xs text-right mb-2">
-              <Link href={uiContent.routeForgotPassword}>
-                {uiContent.forgotPassword}
-              </Link>
-            </p>
-          )}
+          <p className="text-xs text-right mb-2">
+            <Link href={uiContent.routeForgotPassword || ROUTES.FORGOT_PASSWORD}>
+              {uiContent.forgotPassword || "Forgot password?"}
+            </Link>
+          </p>
 
           {error && <div className="form-error mb-2">{error}</div>}
 
@@ -156,12 +162,16 @@ export default function SignInPage() {
             disabled={loading}
             onClick={handleSubmit}
           >
-            {loading ? uiContent.signingIn : uiContent.signin}
+            {loading
+              ? uiContent.signingIn || "Signing in..."
+              : uiContent.signin || "Sign in"}
           </button>
 
           <p className="text-xs muted text-center mt-2">
-            {uiContent.newToApp}{" "}
-            <Link href={uiContent.routeSignup}>{uiContent.createAccount}</Link>
+            {uiContent.newToApp || "New to ProfessionalHub?"}{" "}
+            <Link href={uiContent.routeSignup || ROUTES.SIGNUP}>
+              {uiContent.createAccount || "Create account"}
+            </Link>
           </p>
         </div>
       </div>

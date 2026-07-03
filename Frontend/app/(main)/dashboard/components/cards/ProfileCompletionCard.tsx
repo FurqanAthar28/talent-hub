@@ -37,9 +37,10 @@ export default function ProfileCompletionCard({
         ranking.
       </p>
 
-      <Link href="/profile/edit" className="btn-primary btn-full">
+      <Link href="/profile/edit#information" className="btn-primary btn-full">
         Improve Profile
       </Link>
     </article>
   );
 }
+

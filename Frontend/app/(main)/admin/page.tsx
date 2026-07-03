@@ -8,7 +8,7 @@ import StatsSection from "./components/StatsSection";
 import AuditLogsSection from "./components/AuditLogsSection";
 import ConnectionsSection from "./components/ConnectionsSection";
 import UsersSection from "./components/UsersSection";
-
+import { API_ROUTES } from "../../config/apiRoutes";
 import type {
   AdminStats,
   AdminUser,
@@ -16,6 +16,7 @@ import type {
   AdminAuditLog,
   AuthUser,
 } from "./types";
+
 
 function formatDate(value: string | null) {
   if (!value) return "";
@@ -31,26 +32,25 @@ function getRecruiterVerificationLabel(user: AdminUser, uiContent: UiContent) {
   if (user.role !== "recruiter") return "-";
 
   if (user.recruiterVerificationStatus === "pending") {
-    return uiContent.adminRecruiterPending;
+    return uiContent.adminRecruiterPending || "Pending";
   }
 
   if (user.recruiterVerificationStatus === "approved") {
-    return uiContent.adminRecruiterApproved;
+    return uiContent.adminRecruiterApproved || "Approved";
   }
 
   if (user.recruiterVerificationStatus === "rejected") {
-    return uiContent.adminRecruiterRejected;
+    return uiContent.adminRecruiterRejected || "Rejected";
   }
 
   return "-";
 }
-
 export default function AdminPage() {
   const [uiContent, setUiContent] = useState<UiContent>({});
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useState<string | undefined>("");
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [roleLoading, setRoleLoading] = useState<number | null>(null);
@@ -76,11 +76,11 @@ export default function AdminPage() {
         const uiContentData = await fetchUiContent();
         setUiContent(uiContentData);
 
-        const meRes = await apiFetch(uiContentData.apiAccountsMe);
+        const meRes = await apiFetch(API_ROUTES.ACCOUNTS.ME);
 
         if (!meRes.ok) {
           setCanViewAdmin(false);
-          setNotice(uiContentData.adminAccessDenied);
+          setNotice(uiContentData.adminAccessDenied || "You do not have access to the admin area.");
           return;
         }
 
@@ -88,19 +88,19 @@ export default function AdminPage() {
 
         if (!currentUser.isStaff) {
           setCanViewAdmin(false);
-          setNotice(uiContentData.adminAccessDenied);
+          setNotice(uiContentData.adminAccessDenied || "You do not have access to the admin area.");
           return;
         }
 
         setCanViewAdmin(true);
 
         const [statsRes, usersRes, connectionsRes, auditLogsRes] =
-          await Promise.all([
-            apiFetch(uiContentData.apiAdminStats),
-            apiFetch(uiContentData.apiAdminUsers),
-            apiFetch(uiContentData.apiAdminConnections),
-            apiFetch(uiContentData.apiAdminAuditLogs),
-          ]);
+  await Promise.all([
+    apiFetch("/admin/stats/"),
+    apiFetch("/admin/users/"),
+    apiFetch("/admin/connections/"),
+    apiFetch("/admin/audit-logs/"),
+  ]);
 
         if (
           !statsRes.ok ||
@@ -108,7 +108,7 @@ export default function AdminPage() {
           !connectionsRes.ok ||
           !auditLogsRes.ok
         ) {
-          setNotice(uiContentData.adminUnableToLoad);
+          setNotice(uiContentData.adminUnableToLoad || "Unable to load admin dashboard.");
           return;
         }
 
@@ -119,7 +119,7 @@ export default function AdminPage() {
       } catch (error) {
         console.error("Failed to load admin data:", error);
         setCanViewAdmin(false);
-        setNotice(uiContent.adminUnableToLoad);
+        setNotice(uiContent.adminUnableToLoad || "Unable to load admin dashboard.");
       } finally {
         setLoading(false);
       }
@@ -288,7 +288,7 @@ export default function AdminPage() {
     setConnectionSaving(true);
 
     try {
-      const res = await apiFetch(uiContent.apiAdminConnectUsers, {
+      const res = await apiFetch("/admin/connect-users/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -320,7 +320,7 @@ export default function AdminPage() {
     setDisconnectLoading(connection.id);
 
     try {
-      const res = await apiFetch(uiContent.apiAdminDisconnectUsers, {
+      const res = await apiFetch("/admin/disconnect-users/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

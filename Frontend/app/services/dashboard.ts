@@ -24,6 +24,17 @@ export type AdminDashboardData = {
   totalConnections: number;
 };
 
+type ProfileDashboardResponse = {
+  role?: string;
+  fullName?: string;
+  headline?: string;
+  profileCompletion?: number;
+  openToWork?: boolean;
+  skillsCount?: number;
+  projectsCount?: number;
+  experiencesCount?: number;
+};
+
 async function readJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     throw new Error("Failed to load dashboard data.");
@@ -49,7 +60,7 @@ function getArrayLength(data: unknown): number {
 
 export async function getDashboardData(): Promise<DashboardData> {
   const response = await apiFetch("/profiles/me/");
-  const profile = await readJson<any>(response);
+  const profile = await readJson<ProfileDashboardResponse>(response);
 
   return {
     fullName: profile.fullName || "User",

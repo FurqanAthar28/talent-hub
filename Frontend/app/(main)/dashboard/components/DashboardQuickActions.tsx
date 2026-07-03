@@ -4,7 +4,7 @@ const actions = [
   {
     title: "Complete Profile",
     description: "Update headline, location, bio, and professional links.",
-    href: "/profile/edit",
+    href: "/profile/edit#information",
     button: "Edit Profile",
   },
   {

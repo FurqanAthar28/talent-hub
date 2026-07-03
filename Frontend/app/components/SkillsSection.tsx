@@ -40,7 +40,11 @@ export default function SkillsSection({
   }, [onUpdate]);
 
   useEffect(() => {
-    loadSkills();
+    async function loadInitialData() {
+      await loadSkills();
+    }
+
+    void loadInitialData();
   }, [loadSkills]);
 
   function handleClose() {

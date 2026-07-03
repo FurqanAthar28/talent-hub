@@ -35,7 +35,11 @@ export function useExperience({
   }, [onCountChange]);
 
   useEffect(() => {
-    loadExperiences();
+    async function loadInitialData() {
+      await loadExperiences();
+    }
+
+    void loadInitialData();
   }, [loadExperiences]);
 
   async function saveExperience(

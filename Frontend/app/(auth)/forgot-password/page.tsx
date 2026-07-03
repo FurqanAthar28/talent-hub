@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-
+import { API_ROUTES } from "../../config/apiRoutes";
 import { apiFetch } from "../../api/client";
 import { fetchUiContent, type UiContent } from "../../api/ui-content";
 
@@ -41,7 +41,7 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const res = await apiFetch(uiContent.apiPasswordResetRequest, {
+      const res = await apiFetch(API_ROUTES.ACCOUNTS.PASSWORD_RESET_REQUEST, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -49,11 +49,12 @@ export default function ForgotPasswordPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.message);
+        setError(data.message || "Something went wrong.");
+
         return;
       }
 
-      setNotice(data.message);
+      setNotice(data.message || "OTP sent successfully.");
       setStep("confirm");
     } catch (error) {
       console.error("Failed to request password reset OTP:", error);
@@ -69,7 +70,7 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const res = await apiFetch(uiContent.apiPasswordResetConfirm, {
+      const res = await apiFetch(API_ROUTES.ACCOUNTS.PASSWORD_RESET_CONFIRM, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp, password }),
@@ -78,14 +79,17 @@ export default function ForgotPasswordPage() {
 
       if (!res.ok) 
       {
-        setError(data.message);
+        setError(data.message || "Something went wrong.");
         return;
       }
 
-      setNotice(uiContent.passwordResetSuccessRedirect);
+      setNotice(
+  uiContent.passwordResetSuccessRedirect ||
+    "Password updated successfully. Redirecting to sign in..."
+);
       setStep("complete");
       window.setTimeout(() => {
-        router.replace(uiContent.routeSignin);
+       router.replace("/signin");
       }, 1500);
     } catch (error) {
       console.error("Failed to confirm password reset:", error);
@@ -214,7 +218,7 @@ export default function ForgotPasswordPage() {
           )}
 
           <p className="text-xs muted text-center mt-2">
-            <Link href={uiContent.routeSignin}>{uiContent.backToSignin}</Link>
+            <Link href={uiContent.routeSignin || "/signin"}></Link>
           </p>
         </div>
       </div>

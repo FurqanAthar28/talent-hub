@@ -12,7 +12,7 @@ import BasicInfoSection from "./components/BasicInfoSection";
 import AboutSection from "./components/AboutSection";
 import SocialLinksSection from "./components/SocialLinksSection";
 import ResumeSection from "./components/ResumeSection";
-import SkillsSection from "./components/SkillsSection";
+import SkillsSection from "./components/skills/SkillsSection";
 import ProjectsSection from "./components/projects/ProjectsSection";
 import ExperienceSection from "./components/experience/ExperienceSection";
 
@@ -118,7 +118,12 @@ export default function EditProfilePage() {
   }
 
   useEffect(() => {
-    loadProfile();
+    async function loadInitialProfile() {
+      await loadProfile();
+    }
+
+    void loadInitialProfile();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -274,11 +279,9 @@ export default function EditProfilePage() {
             setCvFile={setCvFile}
           />
         )}
-
         {currentProfile?.role === "candidate" && (
-          <SkillsSection content={content} />
+          <SkillsSection content={content} onProfileChange={loadProfile} />
         )}
-
         {currentProfile?.role === "candidate" && <ProjectsSection />}
 
         {currentProfile?.role === "candidate" && <ExperienceSection />}

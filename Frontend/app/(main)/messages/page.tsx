@@ -46,7 +46,9 @@ export default function MessagesPage() {
 
   const [uiContent, setUiContent] = useState<UiContent>({});
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<number | null>(null);
+  const [activeConversationId, setActiveConversationId] = useState<
+    number | null
+  >(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState("");
@@ -59,8 +61,9 @@ export default function MessagesPage() {
   const messageInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeConversation =
-    conversations.find((conversation) => conversation.id === activeConversationId) ||
-    null;
+    conversations.find(
+      (conversation) => conversation.id === activeConversationId,
+    ) || null;
 
   const scrollToLatestMessage = useCallback(() => {
     messageListEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -74,7 +77,7 @@ export default function MessagesPage() {
     async (
       content: UiContent,
       conversationId: number,
-      options: { showLoading?: boolean; showErrors?: boolean } = {}
+      options: { showLoading?: boolean; showErrors?: boolean } = {},
     ) => {
       const { showLoading = true, showErrors = true } = options;
 
@@ -84,15 +87,18 @@ export default function MessagesPage() {
       }
 
       try {
-        const messageData = await fetchConversationMessages(content, conversationId);
+        const messageData = await fetchConversationMessages(
+          content,
+          conversationId,
+        );
         setMessages(messageData);
 
         setConversations((current) =>
           current.map((conversation) =>
             conversation.id === conversationId
               ? { ...conversation, unreadCount: 0 }
-              : conversation
-          )
+              : conversation,
+          ),
         );
       } catch (error) {
         console.error("Failed to load conversation messages:", error);
@@ -106,7 +112,7 @@ export default function MessagesPage() {
         }
       }
     },
-    []
+    [],
   );
 
   const loadConversations = useCallback(async () => {
@@ -133,13 +139,15 @@ export default function MessagesPage() {
 
       const requestedId =
         typeof window !== "undefined"
-          ? Number(new URLSearchParams(window.location.search).get("conversation"))
+          ? Number(
+              new URLSearchParams(window.location.search).get("conversation"),
+            )
           : 0;
 
       const firstConversationId = conversationData[0]?.id || null;
 
       const selectedId = conversationData.some(
-        (conversation) => conversation.id === requestedId
+        (conversation) => conversation.id === requestedId,
       )
         ? requestedId
         : firstConversationId;
@@ -158,7 +166,11 @@ export default function MessagesPage() {
   }, [loadMessages, router, uiContent.messageUnableToLoad]);
 
   useEffect(() => {
-    loadConversations();
+    async function loadInitialData() {
+      await loadConversations();
+    }
+
+    void loadInitialData();
   }, [loadConversations]);
 
   useEffect(() => {
@@ -210,7 +222,7 @@ export default function MessagesPage() {
 
     const intervalId = window.setInterval(
       refreshLiveMessages,
-      LIVE_REFRESH_INTERVAL_MS
+      LIVE_REFRESH_INTERVAL_MS,
     );
 
     window.addEventListener("focus", refreshLiveMessages);
@@ -244,7 +256,7 @@ export default function MessagesPage() {
       const message = await sendConversationMessage(
         uiContent,
         activeConversationId,
-        trimmedDraft
+        trimmedDraft,
       );
 
       setMessages((current) => [...current, message]);
@@ -258,15 +270,17 @@ export default function MessagesPage() {
                 lastMessageAt: message.created_at,
                 updated_at: message.created_at,
               }
-            : conversation
-        )
+            : conversation,
+        ),
       );
 
       setDraft("");
       focusMessageInput();
     } catch (error) {
       console.error("Failed to send message:", error);
-      setNotice(error instanceof Error ? error.message : uiContent.messageUnableToSend);
+      setNotice(
+        error instanceof Error ? error.message : uiContent.messageUnableToSend,
+      );
     } finally {
       setSending(false);
     }
@@ -323,7 +337,8 @@ export default function MessagesPage() {
                       </span>
 
                       <span className="message-conversation-preview">
-                        {conversation.lastMessage || conversation.participantHeadline}
+                        {conversation.lastMessage ||
+                          conversation.participantHeadline}
                       </span>
                     </span>
 
@@ -353,7 +368,9 @@ export default function MessagesPage() {
 
                 <div className="message-list">
                   {threadLoading ? (
-                    <p className="text-center muted text-sm">{uiContent.loading}</p>
+                    <p className="text-center muted text-sm">
+                      {uiContent.loading}
+                    </p>
                   ) : messages.length === 0 ? (
                     <div className="empty-state">
                       <p>{uiContent.messageEmptyThread}</p>
