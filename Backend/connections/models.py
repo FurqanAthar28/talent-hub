@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 
 
 class Connection(models.Model):
@@ -9,6 +10,20 @@ class Connection(models.Model):
 
     class Meta:
         unique_together = ("user", "connected_user")
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(user_id=models.F("connected_user_id")),
+                name="connection_no_self_connection",
+            ),
+        ]
+
+    def clean(self):
+        if self.user_id and self.user_id == self.connected_user_id:
+            raise ValidationError("A user cannot connect to themselves.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.user.username} connected with {self.connected_user.username}"
@@ -28,6 +43,20 @@ class ConnectionRequest(models.Model):
 
     class Meta:
         unique_together = ("sender", "receiver")
+        constraints = [
+            models.CheckConstraint(
+                condition=~models.Q(sender_id=models.F("receiver_id")),
+                name="connection_request_no_self_request",
+            ),
+        ]
+
+    def clean(self):
+        if self.sender_id and self.sender_id == self.receiver_id:
+            raise ValidationError("A user cannot send a request to themselves.")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.sender.username} sent request to {self.receiver.username}"

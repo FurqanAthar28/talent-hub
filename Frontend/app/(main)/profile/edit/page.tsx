@@ -4,17 +4,23 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { apiFetch } from "../../../api/client";
-import { fetchUiContent, type UiContent } from "../../../api/ui-content";
+import {
+  fetchUiContent,
+  getUiContentErrorMessage,
+  type UiContent,
+} from "../../../api/ui-content";
 import { API_ROUTES } from "../../../config/apiRoutes";
 import { ROUTES } from "../../../config/routes";
 import { buildMediaUrl } from "../../../utils/media";
-import BasicInfoSection from "./components/BasicInfoSection";
-import AboutSection from "./components/AboutSection";
-import SocialLinksSection from "./components/SocialLinksSection";
-import ResumeSection from "./components/ResumeSection";
-import SkillsSection from "./components/skills/SkillsSection";
-import ProjectsSection from "./components/projects/ProjectsSection";
-import ExperienceSection from "./components/experience/ExperienceSection";
+
+import BasicInfoSection from "./components/candidate/BasicInfoSection";
+import AboutSection from "./components/candidate/AboutSection";
+import SocialLinksSection from "./components/candidate/SocialLinksSection";
+import ResumeSection from "./components/candidate/ResumeSection";
+import SkillsSection from "./components/candidate/skills/SkillsSection";
+import ProjectsSection from "./components/candidate/projects/ProjectsSection";
+import ExperienceSection from "./components/candidate/experience/ExperienceSection";
+import RecruiterEditProfile from "./components/recruiter/RecruiterEditProfile";
 
 type Profile = {
   role: "candidate" | "recruiter" | "admin";
@@ -110,19 +116,19 @@ export default function EditProfilePage() {
         hiringTitle: profile.hiringTitle || "",
         adminTitle: profile.adminTitle || "",
       });
-    } catch {
-      setError(content.genericError || "Unable to load profile.");
+    } catch (error) {
+      setError(getUiContentErrorMessage(error));
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    async function loadInitialProfile() {
-      await loadProfile();
-    }
+    const timeoutId = window.setTimeout(() => {
+      void loadProfile();
+    }, 0);
 
-    void loadInitialProfile();
+    return () => window.clearTimeout(timeoutId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -264,86 +270,34 @@ export default function EditProfilePage() {
         />
 
         {currentProfile?.role === "candidate" && (
-          <SocialLinksSection
+          <>
+            <SocialLinksSection
+              content={content}
+              formData={formData}
+              handleChange={handleChange}
+            />
+
+            <ResumeSection
+              content={content}
+              currentCvUrl={currentCvUrl}
+              cvFile={cvFile}
+              setCvFile={setCvFile}
+            />
+
+            <SkillsSection content={content} onProfileChange={loadProfile} />
+
+            <ProjectsSection />
+
+            <ExperienceSection />
+          </>
+        )}
+
+        {currentProfile?.role === "recruiter" && (
+          <RecruiterEditProfile
             content={content}
             formData={formData}
             handleChange={handleChange}
           />
-        )}
-
-        {currentProfile?.role === "candidate" && (
-          <ResumeSection
-            content={content}
-            currentCvUrl={currentCvUrl}
-            cvFile={cvFile}
-            setCvFile={setCvFile}
-          />
-        )}
-        {currentProfile?.role === "candidate" && (
-          <SkillsSection content={content} onProfileChange={loadProfile} />
-        )}
-        {currentProfile?.role === "candidate" && <ProjectsSection />}
-
-        {currentProfile?.role === "candidate" && <ExperienceSection />}
-
-        {currentProfile?.role === "recruiter" && (
-          <section id="company" className="form-section">
-            <div className="form-section-header">
-              <p className="eyebrow">Recruiter Profile</p>
-              <h2>Company Information</h2>
-              <p>Help candidates understand your company and hiring needs.</p>
-            </div>
-
-            <div className="form-group">
-              <label>{content.companyName || "Company Name"}</label>
-              <input
-                type="text"
-                name="companyName"
-                value={formData.companyName}
-                onChange={handleChange}
-                placeholder={content.companyNamePlaceholder || "Company name"}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>{content.companyWebsite || "Company Website"}</label>
-              <input
-                type="url"
-                name="companyWebsite"
-                value={formData.companyWebsite}
-                onChange={handleChange}
-                placeholder={
-                  content.companyWebsitePlaceholder || "https://company.com"
-                }
-              />
-            </div>
-
-            <div className="form-group">
-              <label>{content.companyLocation || "Company Location"}</label>
-              <input
-                type="text"
-                name="companyLocation"
-                value={formData.companyLocation}
-                onChange={handleChange}
-                placeholder={
-                  content.companyLocationPlaceholder || "City, Country"
-                }
-              />
-            </div>
-
-            <div className="form-group">
-              <label>{content.hiringTitle || "Hiring Title"}</label>
-              <input
-                type="text"
-                name="hiringTitle"
-                value={formData.hiringTitle}
-                onChange={handleChange}
-                placeholder={
-                  content.hiringTitlePlaceholder || "Technical Recruiter"
-                }
-              />
-            </div>
-          </section>
         )}
 
         {currentProfile?.role === "admin" && (

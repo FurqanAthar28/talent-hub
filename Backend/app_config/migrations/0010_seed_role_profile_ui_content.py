@@ -18,7 +18,7 @@ UI_CONTENT = {
     "companyNamePlaceholder": "Talent Hub Inc.",
     "companyWebsitePlaceholder": "https://company.com",
     "companyLocationPlaceholder": "City, Country",
-    "hiringTitlePlaceholder": "Technical Recruiter",
+    "hiringTitlePlaceholder": "Your hiring title",
     "adminTitlePlaceholder": "Platform Administrator",
     "recruiterProfileHint": "Recruiter profiles focus on company and hiring information.",
     "adminProfileHint": "Admin profiles focus on platform moderation and operations.",

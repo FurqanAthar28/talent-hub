@@ -4,7 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { apiFetch } from "../../../api/client";
-import { fetchUiContent, type UiContent } from "../../../api/ui-content";
+import {
+  fetchUiContent,
+  getUiContentErrorMessage,
+  type UiContent,
+} from "../../../api/ui-content";
 import { buildMediaUrl } from "../../../utils/media";
 
 type UserProfile = {
@@ -153,7 +157,7 @@ export default function UserProfilePage() {
         }
       } catch (error) {
         console.error("Failed to load public profile:", error);
-        setNotice("Unable to load this profile.");
+        setNotice(getUiContentErrorMessage(error));
       } finally {
         setLoading(false);
       }
@@ -251,14 +255,14 @@ useEffect(() => {
                 </div>
               </div>
 
-              <div className="profile-info">
+              <div className="profile-info" spellCheck={false}>
                 <h1>{user.fullName}</h1>
 
                 <p className="profile-headline">
                   {user.headline || uiContent.professionalFallback}
                 </p>
 
-                <div className="role-badge">{roleLabel}</div>
+                <p className="profile-role-label">{roleLabel}</p>
 
                 <div className="profile-meta">
                   {user.location && <span>{user.location}</span>}

@@ -2,6 +2,8 @@ type ApiFetchOptions = {
   redirectOnUnauthorized?: boolean;
 };
 
+export const unauthorizedEventName = "talenthub:unauthorized";
+
 export async function apiFetch(
   path: string,
   options?: RequestInit,
@@ -16,7 +18,7 @@ export async function apiFetch(
   });
 
   if (redirectOnUnauthorized && res.status === 401) {
-    window.location.replace("/signin");
+    window.dispatchEvent(new Event(unauthorizedEventName));
   }
 
   return res;

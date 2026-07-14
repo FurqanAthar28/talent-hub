@@ -4,7 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { 
+import {
   MAX_CV_FILE_SIZE_BYTES,
   CV_MIME_TYPE,
   MIN_PASSWORD_LENGTH,
@@ -13,8 +13,27 @@ import {
 import { APP_CONFIG } from "../../config/app";
 import { signupUser } from "../../services/authService";
 import { parseApiError } from "../../utils/parseApiError";
-import { fetchUiContent, type UiContent } from "../../api/ui-content";
+import {
+  fetchUiContent,
+  getUiContentErrorMessage,
+  type UiContent,
+} from "../../api/ui-content";
 import { MESSAGES } from "../../config/messages";
+import { ROUTES } from "../../config/routes";
+
+function getText(
+  content: UiContent,
+  key: keyof UiContent,
+  fallback: string
+): string {
+  const value = content[key];
+
+  if (!value || value === key) {
+    return fallback;
+  }
+
+  return value;
+}
 
 function SignUpContent() {
   const router = useRouter();
@@ -45,7 +64,8 @@ function SignUpContent() {
         const data = await fetchUiContent();
         setUiContent(data);
       } catch (error) {
-        console.error("Failed to load signup UI content:", error);
+        setError(getUiContentErrorMessage(error));
+        setUiContent({});
       }
     }
 
@@ -53,10 +73,10 @@ function SignUpContent() {
   }, []);
 
   function handleInputChange(
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    const { name, value } = event.target;
+    setFormData((previousData) => ({ ...previousData, [name]: value }));
   }
 
   function handleCvFileSelect(file: File) {
@@ -74,15 +94,19 @@ function SignUpContent() {
     setCvFile(file);
   }
 
-  function handleCvDrop(e: React.DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile) handleCvFileSelect(droppedFile);
+  function handleCvDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+
+    const droppedFile = event.dataTransfer.files[0];
+
+    if (droppedFile) {
+      handleCvFileSelect(droppedFile);
+    }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
       handleSubmit();
     }
   }
@@ -123,7 +147,14 @@ function SignUpContent() {
       }
 
       const params = new URLSearchParams({ email: formData.email });
-      router.replace(`${uiContent.routeVerifyEmail}?${params.toString()}`);
+
+      router.replace(
+        `${getText(
+          uiContent,
+          "routeVerifyEmail",
+          "/verify-email"
+        )}?${params.toString()}`
+      );
     } catch (error) {
       console.error("Signup error:", error);
       setError(MESSAGES.COMMON.SOMETHING_WENT_WRONG);
@@ -136,36 +167,50 @@ function SignUpContent() {
     <main className="auth-page">
       <div className="auth-card">
         <div className="auth-card-header">
-          <Link href="/" className="auth-logo">
+          <Link href={ROUTES.HOME} className="auth-logo">
             {APP_CONFIG.NAME}
           </Link>
 
-          <h1>{uiContent.createAccountTitle}</h1>
+          <h1>{getText(uiContent, "createAccountTitle", "Create account")}</h1>
 
-          <p>{uiContent.createAccountDescription}</p>
+          <p>
+            {getText(
+              uiContent,
+              "createAccountDescription",
+              "Join ProfessionalHub and build your professional profile."
+            )}
+          </p>
         </div>
 
         <div className="auth-clean-form">
           <div className="form-group">
             <label htmlFor="fullName">
-              {uiContent.fullName} <span className="required-star">*</span>
+              {getText(uiContent, "fullName", "Full name")}{" "}
+              <span className="required-star">*</span>
             </label>
+
             <input
               id="fullName"
-              name="fullName"
+              name="FullName"
               type="text"
               value={formData.fullName}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={uiContent.fullNamePlaceholder}
+              placeholder={getText(
+                uiContent,
+                "fullNamePlaceholder",
+                "Enter your full name"
+              )}
               required
             />
           </div>
 
           <div className="form-group">
             <label htmlFor="email">
-              {uiContent.email} <span className="required-star">*</span>
+              {getText(uiContent, "email", "Email")}{" "}
+              <span className="required-star">*</span>
             </label>
+
             <input
               id="email"
               name="email"
@@ -173,7 +218,11 @@ function SignUpContent() {
               value={formData.email}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={uiContent.emailPlaceholder}
+              placeholder={getText(
+                uiContent,
+                "emailPlaceholder",
+                "Enter your email address"
+              )}
               autoComplete="email"
               required
             />
@@ -181,8 +230,10 @@ function SignUpContent() {
 
           <div className="form-group">
             <label htmlFor="password">
-              {uiContent.password} <span className="required-star">*</span>
+              {getText(uiContent, "password", "Password")}{" "}
+              <span className="required-star">*</span>
             </label>
+
             <input
               id="password"
               name="password"
@@ -190,7 +241,11 @@ function SignUpContent() {
               value={formData.password}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={uiContent.passwordPlaceholder}
+              placeholder={getText(
+                uiContent,
+                "passwordPlaceholder",
+                "Create a password"
+              )}
               autoComplete="new-password"
               required
               minLength={MIN_PASSWORD_LENGTH}
@@ -199,9 +254,10 @@ function SignUpContent() {
 
           <div className="form-group">
             <label htmlFor="confirmPassword">
-              {uiContent.confirmPassword}{" "}
+              {getText(uiContent, "confirmPassword", "Confirm password")}{" "}
               <span className="required-star">*</span>
             </label>
+
             <input
               id="confirmPassword"
               name="confirmPassword"
@@ -209,7 +265,11 @@ function SignUpContent() {
               value={formData.confirmPassword}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={uiContent.confirmPasswordPlaceholder}
+              placeholder={getText(
+                uiContent,
+                "confirmPasswordPlaceholder",
+                "Confirm your password"
+              )}
               autoComplete="new-password"
               required
               minLength={MIN_PASSWORD_LENGTH}
@@ -218,8 +278,10 @@ function SignUpContent() {
 
           <div className="form-group">
             <label htmlFor="role">
-              {uiContent.role} <span className="required-star">*</span>
+              {getText(uiContent, "role", "Role")}{" "}
+              <span className="required-star">*</span>
             </label>
+
             <select
               id="role"
               name="role"
@@ -227,17 +289,22 @@ function SignUpContent() {
               onChange={handleInputChange}
               required
             >
-              <option value={USER_ROLES.CANDIDATE}>{uiContent.candidate}</option>
-              <option value={USER_ROLES.RECRUITER}>{uiContent.recruiter}</option>
+              <option value={USER_ROLES.CANDIDATE}>
+                {getText(uiContent, "candidate", "Candidate")}
+              </option>
+              <option value={USER_ROLES.RECRUITER}>
+                {getText(uiContent, "recruiter", "Recruiter")}
+              </option>
             </select>
           </div>
 
           {isCandidate && (
             <div className="form-group">
               <label htmlFor="linkedinUrl">
-                {uiContent.linkedinProfile}{" "}
+                {getText(uiContent, "linkedinProfile", "LinkedIn profile")}{" "}
                 <span className="required-star">*</span>
               </label>
+
               <input
                 id="linkedinUrl"
                 name="linkedinUrl"
@@ -245,7 +312,11 @@ function SignUpContent() {
                 value={formData.linkedinUrl}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder={uiContent.linkedinProfilePlaceholder}
+                placeholder={getText(
+                  uiContent,
+                  "linkedinProfilePlaceholder",
+                  "https://linkedin.com/in/your-profile"
+                )}
                 required
               />
             </div>
@@ -255,9 +326,10 @@ function SignUpContent() {
             <div className="role-specific-form">
               <div className="form-group">
                 <label htmlFor="companyName">
-                  {uiContent.companyName}{" "}
+                  {getText(uiContent, "companyName", "Company name")}{" "}
                   <span className="required-star">*</span>
                 </label>
+
                 <input
                   id="companyName"
                   name="companyName"
@@ -265,15 +337,20 @@ function SignUpContent() {
                   value={formData.companyName}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  placeholder={uiContent.companyNamePlaceholder}
+                  placeholder={getText(
+                    uiContent,
+                    "companyNamePlaceholder",
+                    "Enter company name"
+                  )}
                   required
                 />
               </div>
 
               <div className="form-group">
                 <label htmlFor="companyWebsite">
-                  {uiContent.companyWebsite}
+                  {getText(uiContent, "companyWebsite", "Company website")}
                 </label>
+
                 <input
                   id="companyWebsite"
                   name="companyWebsite"
@@ -281,14 +358,19 @@ function SignUpContent() {
                   value={formData.companyWebsite}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  placeholder={uiContent.companyWebsitePlaceholder}
+                  placeholder={getText(
+                    uiContent,
+                    "companyWebsitePlaceholder",
+                    "https://company.com"
+                  )}
                 />
               </div>
 
               <div className="form-group">
                 <label htmlFor="companyLocation">
-                  {uiContent.companyLocation}
+                  {getText(uiContent, "companyLocation", "Company location")}
                 </label>
+
                 <input
                   id="companyLocation"
                   name="companyLocation"
@@ -296,12 +378,19 @@ function SignUpContent() {
                   value={formData.companyLocation}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  placeholder={uiContent.companyLocationPlaceholder}
+                  placeholder={getText(
+                    uiContent,
+                    "companyLocationPlaceholder",
+                    "Enter company location"
+                  )}
                 />
               </div>
 
               <div className="form-group">
-                <label htmlFor="hiringTitle">{uiContent.hiringTitle}</label>
+                <label htmlFor="hiringTitle">
+                  {getText(uiContent, "hiringTitle", "Hiring title")}
+                </label>
+
                 <input
                   id="hiringTitle"
                   name="hiringTitle"
@@ -309,7 +398,11 @@ function SignUpContent() {
                   value={formData.hiringTitle}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  placeholder={uiContent.hiringTitlePlaceholder}
+                  placeholder={getText(
+                    uiContent,
+                    "hiringTitlePlaceholder",
+                    "Your hiring title"
+                  )}
                 />
               </div>
             </div>
@@ -318,30 +411,39 @@ function SignUpContent() {
           {isCandidate && (
             <div className="form-group">
               <label>
-                {uiContent.uploadCv} <span className="required-star">*</span>
+                {getText(uiContent, "uploadCv", "Upload CV")}{" "}
+                <span className="required-star">*</span>
               </label>
 
               <div
                 className="file-upload-box"
-                onDragOver={(e) => e.preventDefault()}
+                onDragOver={(event) => event.preventDefault()}
                 onDrop={handleCvDrop}
               >
                 <input
                   type="file"
                   accept=".pdf"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) handleCvFileSelect(file);
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+
+                    if (file) {
+                      handleCvFileSelect(file);
+                    }
                   }}
                 />
 
-                <p className="file-upload-title">{uiContent.cvUploadTitle}</p>
+                <p className="file-upload-title">
+                  {getText(uiContent, "cvUploadTitle", "Upload your CV")}
+                </p>
 
-                <p className="text-xs muted mt-1">{uiContent.cvUploadHint}</p>
+                <p className="text-xs muted mt-1">
+                  {getText(uiContent, "cvUploadHint", "PDF only, maximum 5MB.")}
+                </p>
 
                 {cvFile && (
                   <p className="text-sm mt-1 success-text">
-                    {uiContent.selectedFileLabel}: {cvFile.name}
+                    {getText(uiContent, "selectedFileLabel", "Selected file")}:{" "}
+                    {cvFile.name}
                   </p>
                 )}
               </div>
@@ -357,13 +459,15 @@ function SignUpContent() {
             onClick={handleSubmit}
           >
             {loading
-              ? uiContent.creatingAccountButton
-              : uiContent.createAccountButton}
+              ? getText(uiContent, "creatingAccountButton", "Creating account...")
+              : getText(uiContent, "createAccountButton", "Create account")}
           </button>
 
           <p className="text-xs muted text-center mt-2">
-            {uiContent.alreadyHaveAccount}{" "}
-            <Link href={uiContent.routeSignin || "/signin"}>{uiContent.signIn}</Link>
+            {getText(uiContent, "alreadyHaveAccount", "Already have an account?")}{" "}
+            <Link href={getText(uiContent, "routeSignin", ROUTES.SIGNIN)}>
+              {getText(uiContent, "signIn", "Sign in")}
+            </Link>
           </p>
         </div>
       </div>

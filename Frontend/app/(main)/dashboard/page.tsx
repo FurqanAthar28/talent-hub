@@ -4,13 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { getDashboardData, type DashboardData } from "../../services/dashboard";
+import {
+  getDashboardData,
+  type DashboardData,
+} from "@/app/services/dashboard";
 
-import DashboardError from "./components/DashboardError";
-import DashboardLoading from "./components/DashboardLoading";
-import DashboardOverview from "./components/DashboardOverview";
-import DashboardQuickActions from "./components/DashboardQuickActions";
-import RecruiterDashboardSection from "./components/RecruiterDashboardSection";
+import CandidateDashboard from "./components/candidate/CandidateDashboard";
+import DashboardError from "./components/common/DashboardError";
+import DashboardLoading from "./components/common/DashboardLoading";
+import RecruiterDashboardSection from "./components/recruiter/RecruiterDashboardSection";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -50,28 +52,33 @@ export default function DashboardPage() {
 
   if (error || !dashboardData) {
     return (
-      <DashboardError message={error || "Dashboard data was not found."} />
+      <DashboardError
+        message={error || "Dashboard data was not found."}
+      />
     );
   }
 
   const isRecruiter = dashboardData.role === "recruiter";
+  const firstName = dashboardData.fullName.split(" ")[0] || dashboardData.fullName;
 
   return (
     <main className="page-shell">
-      <header className="dashboard-header">
+      <header className="dashboard-hero">
         <div>
-          <p className="eyebrow">ProfessionalHub Dashboard</p>
-          <h1>Welcome back, {dashboardData.fullName}</h1>
+          <p className="eyebrow">{isRecruiter ? "Recruiter workspace" : "Professional dashboard"}</p>
+          <h1>Welcome back, {firstName}</h1>
           <p>
-            Manage your profile, improve your visibility, and keep your
-            professional network active.
+            {isRecruiter
+              ? "Find candidates, manage conversations, and keep your hiring network active."
+              : "Strengthen your profile, grow your network, and stay ready for new opportunities."}
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="dashboard-hero-actions">
           <Link href="/profile" className="btn-outline">
             View Profile
           </Link>
+
           <Link href="/profile/edit#information" className="btn-primary">
             Improve Profile
           </Link>
@@ -79,13 +86,12 @@ export default function DashboardPage() {
       </header>
 
       <section className="dashboard-content">
-        <DashboardOverview data={dashboardData} />
-
-        <DashboardQuickActions />
-
-        {isRecruiter && <RecruiterDashboardSection />}
+        {isRecruiter ? (
+          <RecruiterDashboardSection />
+        ) : (
+          <CandidateDashboard data={dashboardData} />
+        )}
       </section>
     </main>
   );
 }
-

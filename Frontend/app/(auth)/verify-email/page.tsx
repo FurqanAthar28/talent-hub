@@ -5,7 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
 import { apiFetch } from "../../api/client";
-import { fetchUiContent, type UiContent } from "../../api/ui-content";
+import {
+  fetchUiContent,
+  getUiContentErrorMessage,
+  type UiContent,
+} from "../../api/ui-content";
 
 export default function VerifyEmailPage() {
   return (
@@ -30,8 +34,12 @@ function VerifyEmailContent() {
 
   useEffect(() => {
     async function loadUiContent() {
-      const data = await fetchUiContent();
-      setUiContent(data);
+      try {
+        const data = await fetchUiContent();
+        setUiContent(data);
+      } catch (error) {
+        setError(getUiContentErrorMessage(error));
+      }
     }
 
     loadUiContent();

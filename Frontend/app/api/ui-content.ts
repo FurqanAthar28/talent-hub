@@ -2,6 +2,13 @@ import { apiFetch } from "./client";
 
 export type UiContent = Record<string, string>;
 
+export class UiContentError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UiContentError";
+  }
+}
+
 const REQUIRED_UI_CONTENT_KEYS = [
   "apiAccountsLogout",
   "apiAccountsMe",
@@ -145,6 +152,13 @@ const REQUIRED_UI_CONTENT_KEYS = [
   "adminCannotDeactivateSelf",
   "adminInvalidUserStatus",
   "adminNoChangeRequired",
+  "adminUiContent",
+  "adminUiContentIntro",
+  "adminUiContentSearchPlaceholder",
+  "adminNoUiContent",
+  "adminSaveUiContent",
+  "adminSavingUiContent",
+  "adminUiContentUpdated",
   "routeAdmin",
   "apiAdminStats",
   "apiAdminUsers",
@@ -336,15 +350,21 @@ function validateUiContent(data: UiContent) {
   const missingKeys = REQUIRED_UI_CONTENT_KEYS.filter((key) => !data[key]);
 
   if (missingKeys.length > 0) {
-    throw new Error(`Missing backend UI content: ${missingKeys.join(", ")}`);
+    throw new UiContentError(
+      `Backend UI content is missing required keys: ${missingKeys.join(", ")}`
+    );
   }
 }
 
-export async function fetchUiContent(): Promise<UiContent> {
-  const fallbackContent = Object.fromEntries(
-    REQUIRED_UI_CONTENT_KEYS.map((key) => [key, key])
-  ) as UiContent;
+export function getUiContentErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
 
+  return "Unable to load UI content from backend.";
+}
+
+export async function fetchUiContent(): Promise<UiContent> {
   try {
     const res = await apiFetch(
       "/app-config/ui-content/",
@@ -353,14 +373,25 @@ export async function fetchUiContent(): Promise<UiContent> {
     );
 
     if (!res.ok) {
-      return fallbackContent;
+      throw new UiContentError(
+        `Unable to load UI content from backend. Request failed with status ${res.status}.`
+      );
     }
 
     const data = (await res.json()) as UiContent;
     validateUiContent(data);
 
     return data;
-  } catch {
-    return fallbackContent;
+  } catch (error) {
+    if (error instanceof UiContentError) {
+      throw error;
+    }
+
+    throw new UiContentError(
+      `Unable to load UI content from backend. ${
+        error instanceof Error ? error.message : "Unknown error."
+      }`
+    );
   }
 }
+

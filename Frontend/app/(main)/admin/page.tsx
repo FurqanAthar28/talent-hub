@@ -3,10 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { apiFetch } from "../../api/client";
-import { fetchUiContent, type UiContent } from "../../api/ui-content";
+import {
+  fetchUiContent,
+  getUiContentErrorMessage,
+  type UiContent,
+} from "../../api/ui-content";
 import StatsSection from "./components/StatsSection";
 import AuditLogsSection from "./components/AuditLogsSection";
 import ConnectionsSection from "./components/ConnectionsSection";
+import UiContentSection from "./components/UiContentSection";
 import UsersSection from "./components/UsersSection";
 import { API_ROUTES } from "../../config/apiRoutes";
 import type {
@@ -14,6 +19,7 @@ import type {
   AdminUser,
   AdminConnection,
   AdminAuditLog,
+  AdminUiContentItem,
   AuthUser,
 } from "./types";
 
@@ -59,6 +65,16 @@ export default function AdminPage() {
   );
   const [connections, setConnections] = useState<AdminConnection[]>([]);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
+  const [adminUiContentItems, setAdminUiContentItems] = useState<
+    AdminUiContentItem[]
+  >([]);
+  const [uiContentSearchTerm, setUiContentSearchTerm] = useState("");
+  const [uiContentDraftValues, setUiContentDraftValues] = useState<
+    Record<string, string>
+  >({});
+  const [uiContentSavingKey, setUiContentSavingKey] = useState<string | null>(
+    null
+  );
   const [firstUserId, setFirstUserId] = useState("");
   const [secondUserId, setSecondUserId] = useState("");
   const [connectionSaving, setConnectionSaving] = useState(false);
@@ -94,19 +110,27 @@ export default function AdminPage() {
 
         setCanViewAdmin(true);
 
-        const [statsRes, usersRes, connectionsRes, auditLogsRes] =
+        const [
+          statsRes,
+          usersRes,
+          connectionsRes,
+          auditLogsRes,
+          adminUiContentRes,
+        ] =
   await Promise.all([
     apiFetch("/admin/stats/"),
     apiFetch("/admin/users/"),
     apiFetch("/admin/connections/"),
     apiFetch("/admin/audit-logs/"),
+    apiFetch("/admin/ui-content/"),
   ]);
 
         if (
           !statsRes.ok ||
           !usersRes.ok ||
           !connectionsRes.ok ||
-          !auditLogsRes.ok
+          !auditLogsRes.ok ||
+          !adminUiContentRes.ok
         ) {
           setNotice(uiContentData.adminUnableToLoad || "Unable to load admin dashboard.");
           return;
@@ -116,15 +140,16 @@ export default function AdminPage() {
         setUsers(await usersRes.json());
         setConnections(await connectionsRes.json());
         setAuditLogs(await auditLogsRes.json());
+        setAdminUiContentItems(await adminUiContentRes.json());
       } catch (error) {
         console.error("Failed to load admin data:", error);
         setCanViewAdmin(false);
-        setNotice(uiContent.adminUnableToLoad || "Unable to load admin dashboard.");
+        setNotice(getUiContentErrorMessage(error));
       } finally {
         setLoading(false);
       }
     },
-    [uiContent.adminUnableToLoad]
+    []
   );
 
   useEffect(() => {
@@ -159,6 +184,19 @@ export default function AdminPage() {
       );
     });
   }, [users]);
+
+  const filteredUiContentItems = useMemo(() => {
+    const normalizedSearchTerm = uiContentSearchTerm.trim().toLowerCase();
+
+    if (!normalizedSearchTerm) return adminUiContentItems;
+
+    return adminUiContentItems.filter((item) => {
+      return (
+        item.key.toLowerCase().includes(normalizedSearchTerm) ||
+        item.value.toLowerCase().includes(normalizedSearchTerm)
+      );
+    });
+  }, [adminUiContentItems, uiContentSearchTerm]);
 
   async function updateUserStatus(user: AdminUser) {
     setActionLoading(user.id);
@@ -345,6 +383,48 @@ export default function AdminPage() {
     }
   }
 
+  async function saveUiContent(item: AdminUiContentItem) {
+    const value = uiContentDraftValues[item.key] ?? item.value;
+
+    setNotice("");
+    setUiContentSavingKey(item.key);
+
+    try {
+      const res = await apiFetch(`/admin/ui-content/${item.key}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setNotice(data.message || uiContent.adminUnableToLoad);
+        return;
+      }
+
+      setAdminUiContentItems((previousItems) =>
+        previousItems.map((currentItem) =>
+          currentItem.key === item.key ? data : currentItem
+        )
+      );
+      setUiContent((previousContent) => ({
+        ...previousContent,
+        [data.key]: data.value,
+      }));
+      setUiContentDraftValues((previousValues) => {
+        const nextValues = { ...previousValues };
+        delete nextValues[item.key];
+        return nextValues;
+      });
+      setNotice(data.message || uiContent.adminUiContentUpdated || "UI content updated.");
+    } catch (error) {
+      console.error("Failed to update UI content:", error);
+      setNotice(uiContent.adminUnableToLoad);
+    } finally {
+      setUiContentSavingKey(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="app-main">
@@ -398,6 +478,17 @@ export default function AdminPage() {
           uiContent={uiContent}
           auditLogs={auditLogs}
           formatDate={formatDate}
+        />
+
+        <UiContentSection
+          uiContent={uiContent}
+          items={filteredUiContentItems}
+          searchTerm={uiContentSearchTerm}
+          setSearchTerm={setUiContentSearchTerm}
+          draftValues={uiContentDraftValues}
+          setDraftValues={setUiContentDraftValues}
+          savingKey={uiContentSavingKey}
+          saveUiContent={saveUiContent}
         />
 
         <UsersSection

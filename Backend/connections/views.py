@@ -228,7 +228,7 @@ def my_connections_view(request):
     connections = Connection.objects.filter(
         user=request.user,
         connected_user__in=network_users_queryset(),
-    )
+    ).exclude(connected_user=request.user)
     users = [connection.connected_user for connection in connections]
     serializer = NetworkUserSerializer(
         users,

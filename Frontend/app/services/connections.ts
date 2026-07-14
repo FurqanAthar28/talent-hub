@@ -1,5 +1,4 @@
 import { apiFetch } from "../api/client";
-
 export type RelationshipStatus =
   | "none"
   | "connected"

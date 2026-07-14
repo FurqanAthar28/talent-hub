@@ -3,6 +3,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
 from django.contrib.auth.models import User
+from .skill_options import SKILL_OPTIONS
+
 
 from .models import Activity, Profile, ProfileView, Skill, Project, Experience
 from .serializers import (
@@ -15,7 +17,10 @@ from .serializers import (
 )
 from .utils import calculate_profile_completion
 
-
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def skill_options(request):
+    return Response(SKILL_OPTIONS)
 def add_activity(profile, title):
     Activity.objects.create(profile=profile, title=title)
 

@@ -4,8 +4,12 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { apiFetch } from "../api/client";
-import { fetchUiContent, type UiContent } from "../api/ui-content";
+import { apiFetch, unauthorizedEventName } from "../api/client";
+import {
+  fetchUiContent,
+  getUiContentErrorMessage,
+  type UiContent,
+} from "../api/ui-content";
 import { API_ROUTES } from "../config/apiRoutes";
 import { ROUTES } from "../config/routes";
 
@@ -30,12 +34,14 @@ export default function MainLayout({
   const [loading, setLoading] = useState(true);
   const [uiContent, setUiContent] = useState<UiContent>({});
   const [loggingOut, setLoggingOut] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const routeSignin = uiContent.routeSignin || ROUTES.SIGNIN;
   const routeDashboard = uiContent.routeDashboard || ROUTES.DASHBOARD;
   const routeAdmin = uiContent.routeAdmin || ROUTES.ADMIN;
   const routeConnections = uiContent.routeConnections || ROUTES.CONNECTIONS;
   const routeMessages = uiContent.routeMessages || ROUTES.MESSAGES;
+  const routeProfile = uiContent.routeProfile || ROUTES.PROFILE;
 
   useEffect(() => {
     async function checkUser() {
@@ -54,7 +60,7 @@ export default function MainLayout({
         setUser(data);
       } catch (error) {
         console.error("Failed to load authenticated user:", error);
-        router.push(ROUTES.SIGNIN);
+        setLoadError(getUiContentErrorMessage(error));
       } finally {
         setLoading(false);
       }
@@ -62,6 +68,18 @@ export default function MainLayout({
 
     checkUser();
   }, [router]);
+
+  useEffect(() => {
+    function redirectToSignin() {
+      router.replace(routeSignin);
+    }
+
+    window.addEventListener(unauthorizedEventName, redirectToSignin);
+
+    return () => {
+      window.removeEventListener(unauthorizedEventName, redirectToSignin);
+    };
+  }, [router, routeSignin]);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -76,11 +94,30 @@ export default function MainLayout({
   }
 
   if (loading) return null;
+  if (loadError) {
+    return (
+      <div className="app-main">
+        <div className="container">
+          <div className="card">
+            <div className="card-body text-center">
+              <p className="form-error">{loadError}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!user) return null;
 
   const userRole = user.role || (user.isStaff ? "admin" : "user");
   const isAdmin = userRole === "admin";
   const isRecruiter = userRole === "recruiter";
+  const initials = (user.fullName || user.email || "U")
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
 
   return (
     <>
@@ -91,7 +128,8 @@ export default function MainLayout({
               href={isAdmin ? routeAdmin : routeDashboard}
               className="brand"
             >
-              {uiContent.appName || "ProfessionalHub"}
+              <span className="brand-mark">in</span>
+              <span>{uiContent.appName || "ProfessionalHub"}</span>
             </Link>
 
             <nav className="nav">
@@ -104,12 +142,21 @@ export default function MainLayout({
                 </Link>
               )}
 
-              {isRecruiter && (
+              {!isAdmin && (
                 <Link
                   href={routeConnections}
                   className={pathname === routeConnections ? "active" : ""}
                 >
                   {uiContent.myNetwork || "My Network"}
+                </Link>
+              )}
+
+              {isRecruiter && (
+                <Link
+                  href="/recruiter/candidates"
+                  className={pathname.startsWith("/recruiter/candidates") ? "active" : ""}
+                >
+                  Candidates
                 </Link>
               )}
 
@@ -122,6 +169,15 @@ export default function MainLayout({
                 </Link>
               )}
 
+              {!isAdmin && (
+                <Link
+                  href={routeProfile}
+                  className={pathname === routeProfile ? "active" : ""}
+                >
+                  Profile
+                </Link>
+              )}
+
               {isAdmin && (
                 <Link
                   href={routeAdmin}
@@ -131,10 +187,14 @@ export default function MainLayout({
                 </Link>
               )}
 
+              <div className="nav-user-chip" aria-label={user.fullName || user.email}>
+                <span>{initials}</span>
+              </div>
+
               <button
                 type="button"
                 onClick={handleLogout}
-                className="btn-outline"
+                className="nav-logout"
                 disabled={loggingOut}
               >
                 {loggingOut

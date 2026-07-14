@@ -5,7 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { API_ROUTES } from "../../config/apiRoutes";
 import { apiFetch } from "../../api/client";
-import { fetchUiContent, type UiContent } from "../../api/ui-content";
+import {
+  fetchUiContent,
+  getUiContentErrorMessage,
+  type UiContent,
+} from "../../api/ui-content";
 
 type Step = "request" | "confirm" | "complete";
 
@@ -28,7 +32,7 @@ export default function ForgotPasswordPage() {
         setUiContent(data);
       } catch (error) {
         console.error("Failed to load password reset UI content:", error);
-        setError(error instanceof Error ? error.message : "");
+        setError(getUiContentErrorMessage(error));
       }
     }
 

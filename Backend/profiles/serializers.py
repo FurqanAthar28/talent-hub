@@ -6,6 +6,9 @@ from .pdf_metadata import apply_cv_pdf_metadata
 from .url_utils import normalize_url
 from .utils import calculate_profile_completion
 
+
+
+
 class ProfileSerializer(serializers.ModelSerializer):
     fullName = serializers.SerializerMethodField()
     email = serializers.SerializerMethodField()
@@ -162,6 +165,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def get_profileViewers(self, obj):
         return obj.views.count()
+       
 
 
 class ProfileUpdateSerializer(serializers.Serializer):
@@ -317,3 +321,5 @@ class ExperienceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Company is required")
 
         return value
+
+

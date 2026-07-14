@@ -3,9 +3,7 @@ import { getBackendBaseUrl } from '../../backend-url';
 
 const API_BASE_URL = getBackendBaseUrl();
 
-// All protected frontend requests pass through this proxy.
-// Example: /api/backend/profiles/me -> Django /api/profiles/me/
-// The browser only talks to Next.js, while Django still validates JWT cookies.
+
 type RouteContext = {
   params: Promise<{
     path: string[];

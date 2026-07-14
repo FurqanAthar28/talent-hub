@@ -3,7 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "../../api/client";
-import { fetchUiContent, type UiContent } from "../../api/ui-content";
+import {
+  fetchUiContent,
+  getUiContentErrorMessage,
+  type UiContent,
+} from "../../api/ui-content";
 import { buildMediaUrl } from "../../utils/media";
 
 type Experience = {
@@ -50,6 +54,7 @@ export default function ProfilePage() {
   const [experiences, setExperiences] = useState<Experience[]>([]);
   const [loading, setLoading] = useState(true);
   const [uiContent, setUiContent] = useState<UiContent>({});
+  const [error, setError] = useState("");
 
   const loadUser = useCallback(async () => {
     let signinRoute = "";
@@ -107,6 +112,7 @@ export default function ProfilePage() {
       setExperiences(experienceData);
     } catch (error) {
       console.error("Failed to load profile page data:", error);
+      setError(getUiContentErrorMessage(error));
       if (signinRoute) {
         router.push(signinRoute);
       }
@@ -131,15 +137,27 @@ export default function ProfilePage() {
     );
   }
 
+  if (error) {
+    return (
+      <div className="app-main">
+        <div className="container">
+          <div className="card">
+            <div className="card-body text-center">
+              <p className="form-error">{error}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) return null;
 
   const userInitial =
     user.fullName?.charAt(0).toUpperCase() || uiContent.avatarFallbackInitial;
   const cvUrl = user.cvUrl ? buildMediaUrl(uiContent.apiMediaPrefix, user.cvUrl) : "";
   const roleLabel =
-    user.role === "admin"
-      ? uiContent.adminProfile
-      : user.role === "recruiter"
+    user.role === "recruiter"
         ? uiContent.recruiterProfile
         : uiContent.candidateProfile;
 
@@ -155,7 +173,7 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <div className="profile-info">
+              <div className="profile-info" spellCheck={false}>
                 <div className="profile-header-row">
                   <div>
                     <h1 className="profile-name">{user.fullName}</h1>
@@ -164,7 +182,7 @@ export default function ProfilePage() {
                       {user.headline || uiContent.professionalFallback}
                     </p>
 
-                    <div className="role-badge">{roleLabel}</div>
+                    <p className="profile-role-label">{roleLabel}</p>
 
                     {user.location && (
                       <p className="profile-location">{user.location}</p>

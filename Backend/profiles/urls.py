@@ -1,4 +1,5 @@
 from django.urls import path
+from . import views
 from .views import (
     my_profile_view,
     activities_list_view,
@@ -19,6 +20,7 @@ from .views import (
     experience_create_view,
     experience_update_view,
     experience_delete_view,
+
 )
 
 urlpatterns = [
@@ -30,18 +32,17 @@ urlpatterns = [
     path("<int:user_id>/projects/", user_projects_view),
     path("<int:user_id>/experiences/", user_experiences_view),
     path("me/update/", update_my_profile_view),
-
     path("skills/", skills_list_view),
     path("skills/add/", skill_create_view),
     path("skills/<int:skill_id>/delete/", skill_delete_view),
-
+    path("skills/options/", views.skill_options, name="skill-options"),
     path("projects/", projects_list_view),
     path("projects/add/", project_create_view),
     path("projects/<int:project_id>/update/", project_update_view),
     path("projects/<int:project_id>/delete/", project_delete_view),
-
     path("experiences/", experiences_list_view),
     path("experiences/add/", experience_create_view),
     path("experiences/<int:experience_id>/update/", experience_update_view),
     path("experiences/<int:experience_id>/delete/", experience_delete_view),
+    
 ]

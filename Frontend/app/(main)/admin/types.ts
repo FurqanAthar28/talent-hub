@@ -53,6 +53,12 @@ export type AdminAuditLog = {
   createdAt: string;
 };
 
+export type AdminUiContentItem = {
+  id: number;
+  key: string;
+  value: string;
+};
+
 export type AuthUser = {
   isStaff: boolean;
 };

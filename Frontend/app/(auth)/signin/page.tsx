@@ -5,9 +5,23 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { apiFetch } from "../../api/client";
-import { fetchUiContent, type UiContent } from "../../api/ui-content";
+import {
+  fetchUiContent,
+  getUiContentErrorMessage,
+  type UiContent,
+} from "../../api/ui-content";
 import { API_ROUTES } from "../../config/apiRoutes";
 import { ROUTES } from "../../config/routes";
+
+function getText(content: UiContent, key: keyof UiContent, fallback: string) {
+  const value = content[key];
+
+  if (!value || value === key || value === `/${key}`) {
+    return fallback;
+  }
+
+  return value;
+}
 
 export default function SignInPage() {
   const router = useRouter();
@@ -23,8 +37,13 @@ export default function SignInPage() {
 
   useEffect(() => {
     async function loadUiContent() {
-      const data = await fetchUiContent();
-      setUiContent(data);
+      try {
+        const data = await fetchUiContent();
+        setUiContent(data);
+      } catch (error) {
+        setError(getUiContentErrorMessage(error));
+        setUiContent({});
+      }
     }
 
     loadUiContent();
@@ -35,7 +54,11 @@ export default function SignInPage() {
 
     if (!formData.email.trim() || !formData.password) {
       setError(
-        uiContent.signinMissingFields || "Please enter your email and password."
+        getText(
+          uiContent,
+          "signinMissingFields",
+          "Please enter your email and password."
+        )
       );
       return;
     }
@@ -58,43 +81,34 @@ export default function SignInPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        if (data.message === uiContent.emailVerificationRequired) {
-          const params = new URLSearchParams({ email: formData.email });
-          router.replace(
-            `${uiContent.routeVerifyEmail || "/verify-email"}?${params.toString()}`
-          );
-          return;
-        }
-
         setError(
           data.message ||
             data.error ||
-            uiContent.signinFailed ||
-            "Sign in failed. Please try again."
+            getText(uiContent, "signinFailed", "Sign in failed. Please try again.")
         );
         return;
       }
 
-      router.replace(uiContent.routeDashboard || ROUTES.DASHBOARD);
+      router.replace(ROUTES.DASHBOARD);
     } catch (err) {
       console.error("Signin error:", err);
       setError(
-        uiContent.serverConnectionError || "Unable to connect to server."
+        getText(uiContent, "serverConnectionError", "Unable to connect to server.")
       );
     } finally {
       setLoading(false);
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
       handleSubmit();
     }
   }
 
-  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const { name, value } = e.target;
+  function handleInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const { name, value } = event.target;
 
     setFormData((previousFormData) => ({
       ...previousFormData,
@@ -106,18 +120,24 @@ export default function SignInPage() {
     <main className="auth-page">
       <div className="auth-card">
         <div className="auth-card-header">
-          <Link href="/" className="auth-logo">
-            {uiContent.appName || "ProfessionalHub"}
+          <Link href={ROUTES.HOME} className="auth-logo">
+            {getText(uiContent, "appName", "ProfessionalHub")}
           </Link>
 
-          <h1>{uiContent.signinWelcome || "Welcome back"}</h1>
+          <h1>{getText(uiContent, "signinWelcome", "Welcome back")}</h1>
 
-          <p>{uiContent.signinIntro || "Sign in to continue."}</p>
+          <p>
+            {getText(
+              uiContent,
+              "signinIntro",
+              "Sign in to continue to your professional network."
+            )}
+          </p>
         </div>
 
         <div className="auth-clean-form">
           <div className="form-group">
-            <label htmlFor="email">{uiContent.email || "Email"}</label>
+            <label htmlFor="email">{getText(uiContent, "email", "Email")}</label>
 
             <input
               id="email"
@@ -126,14 +146,18 @@ export default function SignInPage() {
               value={formData.email}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={uiContent.emailPlaceholder || "Enter your email"}
+              placeholder={getText(
+                uiContent,
+                "emailPlaceholder",
+                "Enter your email address"
+              )}
               autoComplete="email"
             />
           </div>
 
           <div className="form-group">
             <label htmlFor="password">
-              {uiContent.password || "Password"}
+              {getText(uiContent, "password", "Password")}
             </label>
 
             <input
@@ -143,14 +167,18 @@ export default function SignInPage() {
               value={formData.password}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={uiContent.passwordPlaceholder || "Enter your password"}
+              placeholder={getText(
+                uiContent,
+                "passwordPlaceholder",
+                "Enter your password"
+              )}
               autoComplete="current-password"
             />
           </div>
 
           <p className="text-xs text-right mb-2">
-            <Link href={uiContent.routeForgotPassword || ROUTES.FORGOT_PASSWORD}>
-              {uiContent.forgotPassword || "Forgot password?"}
+            <Link href={ROUTES.FORGOT_PASSWORD}>
+              {getText(uiContent, "forgotPassword", "Forgot password?")}
             </Link>
           </p>
 
@@ -163,14 +191,14 @@ export default function SignInPage() {
             onClick={handleSubmit}
           >
             {loading
-              ? uiContent.signingIn || "Signing in..."
-              : uiContent.signin || "Sign in"}
+              ? getText(uiContent, "signingIn", "Signing in...")
+              : getText(uiContent, "signin", "Sign in")}
           </button>
 
           <p className="text-xs muted text-center mt-2">
-            {uiContent.newToApp || "New to ProfessionalHub?"}{" "}
-            <Link href={uiContent.routeSignup || ROUTES.SIGNUP}>
-              {uiContent.createAccount || "Create account"}
+            {getText(uiContent, "newToApp", "New to ProfessionalHub?")}{" "}
+            <Link href={ROUTES.SIGNUP}>
+              {getText(uiContent, "createAccount", "Create account")}
             </Link>
           </p>
         </div>
