@@ -7,6 +7,7 @@ import type { Experience } from "../(main)/profile/edit/components/candidate/exp
 import type { Project } from "../(main)/profile/edit/components/candidate/projects/projectTypes";
 import { apiFetch, getApiMessage, readJson } from "../api/client";
 import { API_ROUTES } from "../config/apiRoutes";
+import type { ApprovalStatus, RejectionReason } from "../config/constants";
 import type { RelationshipStatus } from "./connections";
 import type { Skill } from "./skills";
 
@@ -42,10 +43,11 @@ export type Profile = {
   completionChecklist: ChecklistItem[];
   missingFields: string[];
 
-  // Recruiters only: "pending", "approved" or "rejected" (+ the admin's note,
-  // which only the recruiter themselves can see).
-  recruiterVerificationStatus: string;
-  recruiterVerificationNote: string;
+  // Candidates AND recruiters wait for an admin's approval.
+  // The reason and the missing list are only sent to the person themselves.
+  approvalStatus: ApprovalStatus;
+  rejectionReason: RejectionReason | "";
+  approvalMissing: string[]; // what to add before an admin can approve
 
   // Only on SOMEONE ELSE's profile: how I am related to them.
   connectionStatus?: RelationshipStatus;
@@ -133,4 +135,11 @@ export function trackProfileView(userId: string): void {
   apiFetch(API_ROUTES.PROFILES.TRACK_VIEW(userId), { method: "POST" }).catch((error: unknown) =>
     console.warn("Couldn't record the profile view:", error)
   );
+}
+
+/** "Not approved" -> fixed my profile -> send it to the admins again. Gives back my updated profile. */
+export async function resubmitForApproval(): Promise<Profile> {
+  const response = await apiFetch(API_ROUTES.PROFILES.RESUBMIT, { method: "POST" });
+  await throwIfFailed(response, "Couldn't send your profile. Please try again.");
+  return (await response.json()) as Profile;
 }

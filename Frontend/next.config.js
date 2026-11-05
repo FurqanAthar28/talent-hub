@@ -1,3 +1,27 @@
+const isDev = process.env.NODE_ENV !== "production";
+
+/**
+ * Content-Security-Policy: where the browser may load things from.
+ * Everything comes from our own site ('self'). That blocks most injected
+ * <script> attacks: a script from another site simply won't run.
+ *   'unsafe-inline' scripts/styles -> Next.js writes small inline scripts and styles
+ *   'unsafe-eval' + ws:            -> only while developing (hot reload)
+ *   data:/blob: images             -> small built-in images and file previews
+ *   frame-ancestors 'none'         -> nobody may show our pages in a frame
+ */
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self' data:",
+  `connect-src 'self'${isDev ? " ws:" : ""}`,
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
 /**
  * Next.js settings.
  *
@@ -29,6 +53,10 @@ const nextConfig = {
             key: "Permissions-Policy",
             value: "camera=(), microphone=(), geolocation=()",
           },
+          { key: "Content-Security-Policy", value: contentSecurityPolicy },
+          // "Always use https for this site" (for 1 year). Browsers ignore
+          // it on http://localhost, so it never gets in the way while developing.
+          { key: "Strict-Transport-Security", value: "max-age=31536000" },
         ],
       },
     ];

@@ -24,6 +24,7 @@ urlpatterns = [
     path("me/", views.me_view, name="me"),
     path("csrf/", views.csrf_view, name="csrf"),
     path("delete-account/", views.delete_account_view, name="delete-account"),
+    path("restore/", views.restore_account_view, name="restore-account"),  # undo a delete
     # --- Creating an account ---
     path("signup/", views.signup_view, name="signup"),
     path(

@@ -6,14 +6,14 @@ WHAT'S IN THIS FILE
 2. People and connection requests
 3. Messages
 
-Admin-only endpoints live in admin_views.py.
+Admin tools live in the admin_panel app (they can't read private chats).
 """
 
 from django.db.models import Count, OuterRef, Q, Subquery
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
 
@@ -38,6 +38,7 @@ from .serializers import (
     SendMessageSerializer,
     StartConversationSerializer,
 )
+from .throttles import ConnectionRequestThrottle, MessageThrottle
 
 
 # =============================================================================
@@ -144,6 +145,7 @@ def my_connections_view(request):
 
 @api_view(["POST"])
 @permission_classes(NETWORK_PERMISSIONS)
+@throttle_classes([ConnectionRequestThrottle])
 def send_connection_request_view(request):
     serializer = SendConnectionRequestSerializer(data=request.data, context={"request": request})
     serializer.is_valid(raise_exception=True)  # bad data -> 400 with a "message"
@@ -227,6 +229,7 @@ def conversations_list_view(request):
 
 @api_view(["POST"])
 @permission_classes(NETWORK_PERMISSIONS)
+@throttle_classes([MessageThrottle])
 def start_conversation_view(request):
     """Open (or re-open) a chat with one of my connections."""
     serializer = StartConversationSerializer(data=request.data, context={"request": request})
@@ -243,6 +246,7 @@ def start_conversation_view(request):
 
 @api_view(["GET", "POST"])
 @permission_classes(NETWORK_PERMISSIONS)
+@throttle_classes([MessageThrottle])  # counts only sending (POST)
 def conversation_messages_view(request, conversation_id):
     """
     GET  -> read all messages in a chat (and mark the other person's as read)

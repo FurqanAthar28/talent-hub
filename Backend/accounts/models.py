@@ -168,3 +168,22 @@ class AdminActionLog(models.Model):
         # first skips a database query when there is no admin.
         actor = self.actor.email if self.actor_id else "System"
         return f"{actor}: {self.action}"
+
+
+class BannedEmail(models.Model):
+    """
+    Emails that may never sign up again (an admin banned them).
+    Kept even after the account itself is deleted for good.
+    """
+
+    id: int
+
+    email = models.EmailField(unique=True)  # always saved in lower case
+    reason = models.CharField(max_length=255)
+    banned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.email

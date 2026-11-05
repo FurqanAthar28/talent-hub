@@ -5,6 +5,11 @@
  *
  * Django checks the password and, if it's right, sets the login cookies.
  * We never see or store the tokens here: the browser keeps them.
+ *
+ * DELETED ACCOUNTS
+ * If the person deleted their account and the grace period isn't over,
+ * Django answers code "account_deleted". We then offer "Restore my
+ * account", which signs them in with the same email and password.
  */
 
 import AuthShell from "../AuthShell";
@@ -27,6 +32,35 @@ export default function SignInPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Django's "you deleted this account, restore until ..." text, or "" if not.
+  const [restoreOffer, setRestoreOffer] = useState("");
+  const [restoring, setRestoring] = useState(false);
+
+  /** Go back to the page they wanted ("?next=/messages"), or the dashboard. */
+  function goOn() {
+    // safeNextPath only allows pages on OUR site.
+    const next = new URLSearchParams(window.location.search).get("next");
+    router.replace(safeNextPath(next));
+  }
+
+  async function handleRestore() {
+    if (restoring) return;
+    setRestoring(true);
+    setError("");
+    try {
+      const result = await postJson(API_ROUTES.ACCOUNTS.RESTORE_ACCOUNT, { email: email.trim(), password });
+      if (!result.ok) {
+        setRestoreOffer("");
+        setError(result.message || MESSAGES.AUTH.SIGNIN_FAILED);
+        return;
+      }
+      goOn();
+    } catch {
+      setError(MESSAGES.COMMON.SERVER_UNREACHABLE);
+    } finally {
+      setRestoring(false);
+    }
+  }
 
   // A real <form> calls this for the button AND for the Enter key.
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -36,6 +70,7 @@ export default function SignInPage() {
     if (loading) return;
 
     setError("");
+    setRestoreOffer("");
 
     if (!email.trim() || !password) {
       setError(MESSAGES.AUTH.MISSING_EMAIL_AND_PASSWORD);
@@ -51,14 +86,15 @@ export default function SignInPage() {
       });
 
       if (!result.ok) {
+        if (result.data.code === "account_deleted") {
+          setRestoreOffer(result.message);
+          return;
+        }
         setError(result.message || MESSAGES.AUTH.SIGNIN_FAILED);
         return;
       }
 
-      // Go back to the page they wanted before signing in ("?next=/messages"),
-      // or to the dashboard. safeNextPath only allows pages on OUR site.
-      const next = new URLSearchParams(window.location.search).get("next");
-      router.replace(safeNextPath(next));
+      goOn();
     } catch (err) {
       console.error("Sign-in error:", err);
       setError(MESSAGES.COMMON.SERVER_UNREACHABLE);
@@ -119,7 +155,27 @@ export default function SignInPage() {
             </div>
           )}
 
-          <button type="submit" className="btn-primary btn-full" disabled={loading}>
+          {restoreOffer && (
+            <div className="auth-restore mb-2" role="status">
+              <p>{restoreOffer}</p>
+              <button
+                type="button"
+                className="btn-primary btn-full"
+                onClick={handleRestore}
+                disabled={restoring}
+              >
+                {restoring
+                  ? text("restoringAccount", "Restoring...")
+                  : text("restoreAccount", "Restore my account")}
+              </button>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className={restoreOffer ? "btn-outline btn-full" : "btn-primary btn-full"}
+            disabled={loading || restoring}
+          >
             {loading
               ? text("signingIn", "Signing in...")
               : text("signin", "Sign in")}

@@ -12,8 +12,8 @@ from .models import Activity, Experience, Profile, ProfileView, Project, Skill
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ("user", "role", "headline", "recruiter_verification_status")
-    list_filter = ("role", "recruiter_verification_status", "open_to_work")
+    list_display = ("user", "role", "headline", "approval_status")
+    list_filter = ("role", "approval_status", "open_to_work")
     search_fields = ("user__email", "user__first_name", "user__last_name", "headline")
     list_select_related = ("user",)  # load users in the same query (faster)
 

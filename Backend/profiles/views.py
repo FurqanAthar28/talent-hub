@@ -28,6 +28,7 @@ from rest_framework.response import Response
 
 from connections.network import get_relationships
 
+from .approval import missing_profile_parts
 from .models import Activity, Experience, Profile, ProfileView, Project, Skill
 from .permissions import can_view_cv, is_app_admin
 from .serializers import (
@@ -122,6 +123,30 @@ def deleted(message):
 @api_view(["GET"])
 def my_profile_view(request):
     profile = get_or_create_user_profile(request.user)
+    return profile_response(profile, request)
+
+
+@api_view(["POST"])
+def resubmit_for_approval_view(request):
+    """
+    "Not approved"? Fix the profile, then press "Send for review again":
+    the person goes back to the admins' waiting list.
+    """
+    profile = get_or_create_user_profile(request.user)
+    if profile.approval_status != Profile.APPROVAL_REJECTED:
+        return Response({"message": "Your profile isn't waiting for a new review."}, status=status.HTTP_400_BAD_REQUEST)
+
+    missing = missing_profile_parts(profile)
+    if missing:
+        return Response(
+            {"message": "Please add these first: " + ", ".join(missing) + "."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    profile.approval_status = Profile.APPROVAL_PENDING
+    profile.rejection_reason = ""
+    profile.save(update_fields=["approval_status", "rejection_reason"])
+    add_activity(profile, "Sent the profile for review again")
     return profile_response(profile, request)
 
 

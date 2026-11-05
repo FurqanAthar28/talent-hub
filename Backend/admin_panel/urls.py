@@ -16,13 +16,10 @@ urlpatterns = [
     path("me/", views.admin_me_view, name="me"),  # the admin's own profile numbers
     # --- Users ---
     path("users/", views.admin_users_view, name="users"),
-    path("users/<int:user_id>/status/", views.admin_user_status_view, name="user-status"),
+    path("users/<int:user_id>/account/", views.admin_account_action_view, name="account-action"),
     path("users/<int:user_id>/role/", views.admin_user_role_view, name="user-role"),
-    path(
-        "users/<int:user_id>/recruiter-verification/",
-        views.admin_recruiter_verification_view,
-        name="recruiter-verification",
-    ),
+    path("users/<int:user_id>/approval/", views.admin_approval_view, name="approval"),
+    path("users/<int:user_id>/approval-checks/", views.admin_approval_checks_view, name="approval-checks"),
     # --- Connections ---
     path("connections/", views.admin_connections_view, name="connections"),
     path("connect-users/", views.admin_connect_users_view, name="connect-users"),

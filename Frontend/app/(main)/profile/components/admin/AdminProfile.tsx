@@ -32,6 +32,9 @@ import {
   ShieldCheck,
   Trash2,
   Type,
+  Ban,
+  CirclePause,
+  RotateCcw,
   Unlink,
   UserCheck,
   Users,
@@ -46,6 +49,7 @@ import * as adminApi from "@/app/services/admin";
 import type { Profile } from "@/app/services/profiles";
 import { formatRelativeTime } from "@/app/utils/time";
 import type { AdminMe, AdminUser } from "../../../admin/types";
+import ApprovalReview from "../../../admin/components/ApprovalReview";
 import ActivityGrid from "./ActivityGrid";
 import styles from "./adminProfile.module.css";
 
@@ -66,11 +70,20 @@ const ACTION_ICONS: Record<string, LucideIcon> = {
   ui_content_updated: Type,
   conversation_viewed: MessagesSquare,
   account_deleted: Trash2,
+  approval_changed: UserCheck,
+  account_suspend: CirclePause,
+  account_unsuspend: Power,
+  account_ban: Ban,
+  account_unban: ShieldCheck,
+  account_delete: Trash2,
+  account_restore: RotateCcw,
+  account_soft_deleted: Trash2,
+  account_deleted_for_good: Trash2,
 };
 
 const TOOLS = [
-  { tab: "overview", icon: UserCheck, title: "Recruiter approvals", text: "Approve or reject new recruiters" },
-  { tab: "users", icon: Users, title: "Users and roles", text: "Switch accounts on or off, change roles" },
+  { tab: "overview", icon: UserCheck, title: "Approvals", text: "Review new candidates and recruiters" },
+  { tab: "users", icon: Users, title: "Users and roles", text: "Suspend, ban, delete or restore; change roles" },
   { tab: "connections", icon: Link2, title: "Connections", text: "Connect two people, or remove a connection" },
   { tab: "texts", icon: Type, title: "Page texts", text: "Change the app's wording without code" },
   { tab: "activity", icon: LayoutDashboard, title: "Activity log", text: "Everything every admin changed" },
@@ -86,10 +99,7 @@ function plural(count: number, one: string, many: string) {
 /** The admin's numbers, and the recruiters waiting for approval. */
 async function fetchAdminData() {
   const [me, users] = await Promise.all([adminApi.getMyAdminProfile(), adminApi.getUsers()]);
-  const waiting = users.filter(
-    (user) => user.role === "recruiter" && user.recruiterVerificationStatus === "pending"
-  );
-  return { me, waiting };
+  return { me, waiting: users.filter(adminApi.isWaitingForApproval) };
 }
 
 type Props = {
@@ -103,7 +113,8 @@ export default function AdminProfile({ profile }: Props) {
   const [waiting, setWaiting] = useState<AdminUser[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [approvingId, setApprovingId] = useState<number | null>(null);
+  // The person whose approval Review window is open (null = closed).
+  const [reviewing, setReviewing] = useState<AdminUser | null>(null);
 
   useEffect(() => {
     let pageIsOpen = true;
@@ -121,23 +132,17 @@ export default function AdminProfile({ profile }: Props) {
     };
   }, []);
 
-  async function approve(user: AdminUser) {
-    if (approvingId !== null) return;
-    setApprovingId(user.id);
-    setNotice("");
+  /** The Review window saved a decision: reload, so your numbers and grid go up at once. */
+  async function handleDecided(_updated: AdminUser, doneMessage: string) {
+    setReviewing(null);
+    setNotice(doneMessage);
     setError("");
-
     try {
-      await adminApi.setRecruiterVerification(user.id, "approved");
-      setNotice(`${user.fullName || user.email} is approved and can now search candidates.`);
-      // Reload, so your numbers and the grid go up straight away.
       const data = await fetchAdminData();
       setMe(data.me);
       setWaiting(data.waiting);
-    } catch (approveError) {
-      setError(errorText(approveError, "Couldn't approve this recruiter."));
-    } finally {
-      setApprovingId(null);
+    } catch (reloadError) {
+      setError(errorText(reloadError, "Saved, but couldn't refresh your numbers."));
     }
   }
 
@@ -225,9 +230,9 @@ export default function AdminProfile({ profile }: Props) {
             title={
               waiting.length === 0
                 ? "Nothing is waiting for you"
-                : `${plural(waiting.length, "recruiter is", "recruiters are")} waiting for approval`
+                : `${plural(waiting.length, "person is", "people are")} waiting for approval`
             }
-            hint="Approved recruiters can search candidates and send messages."
+            hint="Only approved candidates and recruiters appear in search, connect and send messages."
             actions={
               waiting.length > WAITING_PREVIEW && (
                 <Link href={adminTab("overview")} className="btn-outline btn-sm">
@@ -241,7 +246,7 @@ export default function AdminProfile({ profile }: Props) {
                 <span className={styles.allClearIcon}>
                   <CheckCheck size={20} aria-hidden="true" />
                 </span>
-                <p>You&apos;re all caught up. New recruiters will show up here as soon as they verify their email.</p>
+                <p>You&apos;re all caught up. New candidates and recruiters show up here as soon as they confirm their email.</p>
               </div>
             ) : (
               <ul className={styles.rows}>
@@ -255,16 +260,8 @@ export default function AdminProfile({ profile }: Props) {
                       </span>
                     </div>
                     <div className={styles.rowActions}>
-                      <Link href={adminTab("overview")} className="btn-outline btn-sm">
+                      <button type="button" className="btn-primary btn-sm" onClick={() => setReviewing(user)}>
                         Review
-                      </Link>
-                      <button
-                        type="button"
-                        className="btn-primary btn-sm"
-                        onClick={() => approve(user)}
-                        disabled={approvingId !== null}
-                      >
-                        {approvingId === user.id ? "Approving..." : "Approve"}
                       </button>
                     </div>
                   </li>
@@ -276,11 +273,11 @@ export default function AdminProfile({ profile }: Props) {
           <Panel title="Your impact" hint="Everything you've done as an admin, since day one.">
             {me ? (
               <dl className={styles.impact}>
-                <Impact icon={UserCheck} value={me.impact.recruitersApproved} label="Recruiters approved" />
+                <Impact icon={UserCheck} value={me.impact.peopleApproved} label="People approved" />
                 <Impact icon={Users} value={me.impact.accountsManaged} label="Accounts managed" />
                 <Impact icon={Link2} value={me.impact.connectionsMade} label="People connected" />
                 <Impact icon={Type} value={me.impact.textsEdited} label="Page texts edited" />
-                <Impact icon={PowerOff} value={me.impact.recruitersRejected} label="Recruiters turned down" />
+                <Impact icon={PowerOff} value={me.impact.peopleNotApproved} label="Not approved" />
                 <Impact icon={LayoutDashboard} value={me.impact.totalActions} label="Actions in total" />
               </dl>
             ) : (
@@ -392,6 +389,9 @@ export default function AdminProfile({ profile }: Props) {
           </Panel>
         </div>
       </div>
+      {reviewing && (
+        <ApprovalReview user={reviewing} onClose={() => setReviewing(null)} onDecided={handleDecided} />
+      )}
     </div>
   );
 }

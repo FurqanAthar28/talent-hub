@@ -1,0 +1,269 @@
+/*
+ * The top bar (+ the phone bottom bar). Height: --topbar-height in globals.css,
+ * so every page knows how much room to leave at the top.
+ */
+
+.bar {
+  position: fixed;
+  z-index: 1000;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--topbar-height);
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid var(--border-color);
+  backdrop-filter: blur(12px);
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  max-width: 1128px; /* the same width as the pages, so the logo lines up with them */
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.links {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  height: 100%;
+  margin-left: auto;
+}
+
+/* Icon above the word, like the big networking sites. */
+.link,
+.me {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 2px;
+  min-width: 76px;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.link:hover,
+.me:hover {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.link:focus-visible,
+.me:focus-visible,
+.tab:focus-visible,
+.item:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -4px;
+  border-radius: 10px;
+}
+
+/* The open page: dark text and a line along the bottom edge. */
+.linkActive {
+  color: var(--ink);
+}
+
+.linkActive::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--ink);
+}
+
+/* ---------- "Me ▾" ---------- */
+
+.account {
+  position: relative;
+  height: 100%;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-color);
+}
+
+.links + .account {
+  margin-left: 0;
+}
+
+.meLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  width: 260px;
+  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--card-color);
+  box-shadow: var(--shadow-pop);
+  animation: drop 120ms ease-out;
+}
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 12px;
+}
+
+.who div {
+  display: grid;
+  min-width: 0;
+}
+
+.who strong {
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.who span {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--primary-light);
+  text-decoration: none;
+}
+
+.divider {
+  margin: 6px 4px;
+  border: 0;
+  border-top: 1px solid var(--border-color);
+}
+
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* ---------- Phone bottom bar ---------- */
+
+.tabBar {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .inner {
+    padding: 0 16px;
+  }
+
+  .links {
+    display: none;
+  }
+
+  .account {
+    margin-left: auto;
+    border-left: 0;
+  }
+
+  .me {
+    min-width: 0;
+  }
+
+  .linkActive::after {
+    display: none;
+  }
+
+  .tabBar {
+    position: fixed;
+    z-index: 900;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.97);
+    border-top: 1px solid var(--border-color);
+    backdrop-filter: blur(12px);
+  }
+
+  /* Leave room so the bottom bar never hides the end of a page. */
+  :global(body):has(.tabBar) {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  .tab {
+    display: grid;
+    justify-items: center;
+    gap: 2px;
+    min-height: 52px;
+    padding: 6px 2px;
+    border-radius: 12px;
+    color: var(--text-secondary);
+    font-size: 11.5px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .tab:hover {
+    text-decoration: none;
+  }
+
+  .tabActive {
+    color: var(--ink);
+  }
+
+  .tabIcon {
+    display: grid;
+    place-items: center;
+    width: 48px;
+    height: 28px;
+    border-radius: 999px;
+  }
+
+  .tabActive .tabIcon {
+    background: var(--primary-light);
+    color: var(--primary-hover);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dropdown {
+    animation: none;
+  }
+}

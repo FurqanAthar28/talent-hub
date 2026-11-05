@@ -12,7 +12,10 @@ export default function StatsSection({ stats, text }: { stats: AdminStats; text:
       items: [
         { label: text("adminUsers", "All users"), value: stats.users },
         { label: text("adminActiveUsers", "Active"), value: stats.activeUsers },
-        { label: text("adminInactiveUsers", "Switched off"), value: stats.inactiveUsers },
+        { label: text("adminInactiveUsers", "Can't sign in"), value: stats.inactiveUsers },
+        { label: text("adminSuspendedUsers", "Suspended"), value: stats.suspendedUsers },
+        { label: text("adminBannedUsers", "Banned"), value: stats.bannedUsers },
+        { label: text("adminDeletedUsers", "Deleted (restorable)"), value: stats.deletedUsers },
         { label: text("adminStaffUsers", "Admins"), value: stats.adminUsers },
       ],
     },
@@ -22,9 +25,9 @@ export default function StatsSection({ stats, text }: { stats: AdminStats; text:
         { label: "Candidates", value: stats.candidates },
         { label: "Recruiters", value: stats.recruiters },
         {
-          label: text("adminPendingRecruiters", "Recruiters waiting for approval"),
-          value: stats.pendingRecruiters,
-          warning: stats.pendingRecruiters > 0,
+          label: "Waiting for approval",
+          value: stats.pendingApprovals,
+          warning: stats.pendingApprovals > 0,
         },
       ],
     },
@@ -49,7 +52,8 @@ export default function StatsSection({ stats, text }: { stats: AdminStats; text:
               <li key={item.label} className={styles.stat}>
                 <span className={styles.statLabel}>{item.label}</span>
                 <span className={`${styles.statValue} ${"warning" in item && item.warning ? styles.statValueWarning : ""}`}>
-                  {item.value.toLocaleString()}
+                  {/* "—" instead of crashing the page if the server didn't send this number. */}
+                  {typeof item.value === "number" ? item.value.toLocaleString() : "—"}
                 </span>
               </li>
             ))}

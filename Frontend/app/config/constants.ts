@@ -29,3 +29,23 @@ export const OTP_LENGTH = 6;
 // Search boxes wait this long after the LAST key press before asking Django,
 // so typing "Django" sends 1 request instead of 6.
 export const SEARCH_DEBOUNCE_MS = 400;
+
+// ---------- Approval (candidates and recruiters) ----------
+// Must match Profile.APPROVAL_* and Profile.REJECTION_* in Backend/profiles/models.py
+
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+/** Must match Profile.ACCOUNT_* in Backend/profiles/models.py. "Deleted" isn't one: see deletedAt. */
+export type AccountStatus = "active" | "suspended" | "banned";
+export type RejectionReason = "email_not_verifiable" | "company_not_verifiable";
+
+/** What each "not approved" reason means, in words the person understands. */
+export const REJECTION_REASON_TEXT: Record<RejectionReason, { title: string; fix: string }> = {
+  email_not_verifiable: {
+    title: "We couldn't verify your email",
+    fix: "Make sure your email and profile details are real and match your LinkedIn, then send your profile again.",
+  },
+  company_not_verifiable: {
+    title: "We couldn't verify your company",
+    fix: "Add your company's real name and website (and your current job title), then send your profile again.",
+  },
+};

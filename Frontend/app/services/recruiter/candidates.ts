@@ -39,7 +39,7 @@ async function throwIfFailed(response: Response, fallback: string) {
 export async function getRecruiterCandidates(
   filters: RecruiterCandidateFilters = {},
   signal?: AbortSignal
-): Promise<RecruiterCandidate[]> {
+): Promise<{ results: RecruiterCandidate[]; count: number; next: string | null; previous: string | null }> {
   const params = new URLSearchParams();
 
   if (filters.search?.trim()) params.set("search", filters.search.trim());
@@ -56,8 +56,18 @@ export async function getRecruiterCandidates(
   );
   await throwIfFailed(response, "Failed to load candidates.");
 
-  const data: unknown = await response.json();
-  return Array.isArray(data) ? (data as RecruiterCandidate[]) : [];
+  const data = await response.json() as {
+    results?: RecruiterCandidate[];
+    count?: number;
+    next?: string | null;
+    previous?: string | null;
+  };
+  return {
+    results: Array.isArray(data.results) ? data.results : [],
+    count: typeof data.count === "number" ? data.count : 0,
+    next: data.next ?? null,
+    previous: data.previous ?? null,
+  };
 }
 
 export async function getRecruiterCandidate(

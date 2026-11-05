@@ -9,11 +9,13 @@ from django.shortcuts import get_object_or_404
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
 
 from config.db_helpers import count_related
 from connections.models import ConnectionRequest
 from connections.network import network_users
-from profiles.models import Experience, Profile, Project
+from profiles.approval import searchable_candidates
+from profiles.models import Experience, Project
 from profiles.permissions import is_app_admin, is_approved_recruiter
 
 from .serializers import RecruiterCandidateSerializer
@@ -41,12 +43,12 @@ RECRUITER_PERMISSIONS = [IsAuthenticated, IsApprovedRecruiter]
 
 
 def visible_candidates():
-    """Every candidate a recruiter may see: candidate role, account switched on."""
-    return Profile.objects.filter(
-        role=Profile.ROLE_CANDIDATE,
-        user__is_active=True,
-        user__is_staff=False,
-    )
+    """
+    Every candidate a recruiter may see. The shared rule checks approval,
+    account state AND a still-complete profile on every search
+    (profiles/approval.py), so a suspended person vanishes at once.
+    """
+    return searchable_candidates()
 
 
 def candidate_profiles():
@@ -111,8 +113,12 @@ def recruiter_candidates(request):
     # distinct(): searching skills can find the same person twice
     # (for example "Python" and "Python Django"). Show each person once.
     candidates = candidates.distinct().order_by("user__first_name", "user__last_name")
-
-    return Response(RecruiterCandidateSerializer(candidates, many=True).data)
+    paginator = api_settings.DEFAULT_PAGINATION_CLASS()
+    page = paginator.paginate_queryset(candidates, request)
+    serializer = RecruiterCandidateSerializer(page if page is not None else candidates, many=True)
+    if page is not None:
+        return paginator.get_paginated_response(serializer.data)
+    return Response(serializer.data)
 
 
 @api_view(["GET"])

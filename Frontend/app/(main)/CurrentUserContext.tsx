@@ -18,6 +18,8 @@ export type CurrentUser = {
   email: string;
   fullName: string;
   role: "candidate" | "recruiter" | "admin";
+  /** Days a deleted account can still be restored (ACCOUNT_DELETION_GRACE_DAYS in Django). */
+  deletionGraceDays: number;
 };
 
 /**

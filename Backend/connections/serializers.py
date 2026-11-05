@@ -14,7 +14,7 @@ from rest_framework import serializers
 
 from profiles.permissions import role_of
 
-from .models import Connection, ConnectionRequest, Conversation, Message
+from .models import ConnectionRequest, Conversation, Message
 from .network import NO_RELATIONSHIP, are_connected, is_network_user
 
 User = get_user_model()
@@ -26,7 +26,7 @@ User = get_user_model()
 
 
 def display_name(user):
-    return user.get_full_name() or user.email or user.username
+    return user.get_full_name() or "Member"
 
 
 def profile_text(user, field_name):
@@ -345,112 +345,3 @@ class SendMessageSerializer(serializers.Serializer):
             "max_length": f"Message must be {Message.MAX_LENGTH} characters or less",
         },
     )
-
-
-# =============================================================================
-# ADMIN
-# =============================================================================
-
-
-class AdminConnectionSerializer(serializers.ModelSerializer):
-    userId = serializers.IntegerField(source="user.id", read_only=True)
-    userName = serializers.SerializerMethodField()
-    userEmail = serializers.EmailField(source="user.email", read_only=True)
-    userRole = serializers.SerializerMethodField()
-    connectedUserId = serializers.IntegerField(source="connected_user.id", read_only=True)
-    connectedUserName = serializers.SerializerMethodField()
-    connectedUserEmail = serializers.EmailField(source="connected_user.email", read_only=True)
-    connectedUserRole = serializers.SerializerMethodField()
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
-
-    class Meta:
-        model = Connection
-        fields = [
-            "id",
-            "userId",
-            "userName",
-            "userEmail",
-            "userRole",
-            "connectedUserId",
-            "connectedUserName",
-            "connectedUserEmail",
-            "connectedUserRole",
-            "createdAt",
-        ]
-
-    def get_userName(self, obj):
-        return display_name(obj.user)
-
-    def get_connectedUserName(self, obj):
-        return display_name(obj.connected_user)
-
-    def get_userRole(self, obj):
-        return user_role(obj.user)
-
-    def get_connectedUserRole(self, obj):
-        return user_role(obj.connected_user)
-
-
-class AdminMessageSerializer(serializers.ModelSerializer):
-    senderId = serializers.IntegerField(source="sender.id", read_only=True)
-    senderName = serializers.SerializerMethodField()
-    senderEmail = serializers.EmailField(source="sender.email", read_only=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
-    readAt = serializers.DateTimeField(source="read_at", read_only=True)
-
-    class Meta:
-        model = Message
-        fields = ["id", "conversation", "senderId", "senderName", "senderEmail", "body", "createdAt", "readAt"]
-
-    def get_senderName(self, obj):
-        return display_name(obj.sender)
-
-
-class AdminConversationSerializer(serializers.ModelSerializer):
-    """Uses the same annotated columns as ConversationSerializer, plus message_count."""
-
-    participantOneId = serializers.IntegerField(source="participant_one.id", read_only=True)
-    participantOneName = serializers.SerializerMethodField()
-    participantOneEmail = serializers.EmailField(source="participant_one.email", read_only=True)
-    participantTwoId = serializers.IntegerField(source="participant_two.id", read_only=True)
-    participantTwoName = serializers.SerializerMethodField()
-    participantTwoEmail = serializers.EmailField(source="participant_two.email", read_only=True)
-    lastMessage = serializers.CharField(source="last_message_body", default="", read_only=True)
-    lastMessageAt = serializers.DateTimeField(source="last_message_at", default=None, read_only=True)
-    messageCount = serializers.IntegerField(source="message_count", default=0, read_only=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
-    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
-
-    class Meta:
-        model = Conversation
-        fields = [
-            "id",
-            "participantOneId",
-            "participantOneName",
-            "participantOneEmail",
-            "participantTwoId",
-            "participantTwoName",
-            "participantTwoEmail",
-            "lastMessage",
-            "lastMessageAt",
-            "messageCount",
-            "createdAt",
-            "updatedAt",
-        ]
-
-    def get_participantOneName(self, obj):
-        return display_name(obj.participant_one)
-
-    def get_participantTwoName(self, obj):
-        return display_name(obj.participant_two)
-
-
-class AdminConversationDetailSerializer(AdminConversationSerializer):
-    messages = serializers.SerializerMethodField()
-
-    class Meta(AdminConversationSerializer.Meta):
-        fields = AdminConversationSerializer.Meta.fields + ["messages"]
-
-    def get_messages(self, obj):
-        messages = obj.messages.select_related("sender")
-        return AdminMessageSerializer(messages, many=True).data

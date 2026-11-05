@@ -16,6 +16,10 @@ Views can also call first_error_message(serializer.errors) themselves.
 """
 
 from rest_framework.views import exception_handler
+from django.http import JsonResponse
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Friendly names for form fields, used in messages like "Email: ...".
 # One list for the whole API. Add new fields here.
@@ -98,3 +102,12 @@ def api_exception_handler(exc, context):
         data["message"] = first_error_message(data)
 
     return response
+
+
+def json_500(request, *args, **kwargs):
+    """Keep browser-facing crashes out of Django's HTML error pages."""
+    logger.exception("Unhandled API server error", extra={"request_path": request.path})
+    return JsonResponse(
+        {"message": "Internal server error.", "detail": "An unexpected server error occurred."},
+        status=500,
+    )

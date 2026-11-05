@@ -31,7 +31,7 @@ python manage.py migrate
 ```bat
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   &:: app + type-checking tools (server: requirements.txt)
 copy .env.example .env          &:: then fill in your real values
 python manage.py migrate
 python manage.py createcachetable  &:: table that remembers rate-limit counts
@@ -67,6 +67,14 @@ python manage.py test
 Tests use a temporary in-memory SQLite database (see `config/settings.py`),
 so they never touch your real PostgreSQL data. Only the last line matters:
 `OK` means everything passed.
+
+## AI features
+
+All AI code lives in the `ai` app, and only `ai/provider.py` talks to the AI provider.
+
+- Set `ANTHROPIC_API_KEY` in `.env`. Without it the app still works, and the AI button says "AI is unavailable right now".
+- `AI_MODEL` picks the model and `AI_DAILY_LIMIT` sets the uses per candidate per day (default 10).
+- `python manage.py test ai` never calls the real AI, so it's free and needs no key.
 
 ## Deploying (for example on Render)
 

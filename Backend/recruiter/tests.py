@@ -22,11 +22,15 @@ class RecruiterTests(TestCase):
         user = User.objects.create_user(
             email, email, "S3cure-pass!", first_name=email.split("@")[0].title(), is_active=active
         )
+        if role == Profile.ROLE_CANDIDATE:
+            # What an approved candidate always has (search hides anyone without them).
+            profile_fields.setdefault("linkedin_url", f"https://linkedin.com/in/{email.split('@')[0]}")
+            profile_fields.setdefault("cv_file", "cvs/test.pdf")
         Profile.objects.create(
             user=user,
             role=role,
-            recruiter_verification_status=(
-                Profile.RECRUITER_VERIFICATION_APPROVED if approved else Profile.RECRUITER_VERIFICATION_PENDING
+            approval_status=(
+                Profile.APPROVAL_APPROVED if approved else Profile.APPROVAL_PENDING
             ),
             **profile_fields,
         )
@@ -46,7 +50,9 @@ class RecruiterTests(TestCase):
         Project.objects.create(profile=Profile.objects.get(user=self.ali), title="Talent Hub")
 
     def found_ids(self, query=""):
-        return {candidate["id"] for candidate in self.client.get(URL + query).json()}
+        response = self.client.get(URL + query).json()
+        candidates = response["results"] if isinstance(response, dict) else response
+        return {candidate["id"] for candidate in candidates}
 
     # ----- who can use it -----
 
@@ -108,3 +114,31 @@ class RecruiterTests(TestCase):
         )
         # Candidates (and unapproved recruiters) can't see it.
         self.assertEqual(self.client_for(self.ali).get("/api/recruiter/summary/").status_code, 403)
+
+
+class SearchVisibilityTests(TestCase):
+    """Layer 3: checked on EVERY search, no admin needed."""
+
+    make_user = RecruiterTests.make_user
+    client_for = RecruiterTests.client_for
+
+    def test_candidates_disappear_from_search_the_moment_they_stop_qualifying(self):
+        recruiter = self.client_for(self.make_user("rec@example.com", role=Profile.ROLE_RECRUITER))
+        omar = self.make_user("omar@example.com")
+
+        def found():
+            candidates = recruiter.get(URL).json()["results"]
+            return "Omar" in [c["fullName"].split()[0] for c in candidates]
+
+        self.assertTrue(found())
+
+        Profile.objects.filter(user=omar).update(approval_status=Profile.APPROVAL_PENDING)
+        self.assertFalse(found())  # not approved (yet / any more)
+        Profile.objects.filter(user=omar).update(approval_status=Profile.APPROVAL_APPROVED)
+
+        Profile.objects.filter(user=omar).update(cv_file="")
+        self.assertFalse(found())  # CV removed after approval: hidden until fixed
+        Profile.objects.filter(user=omar).update(cv_file="cvs/test.pdf")
+
+        User.objects.filter(pk=omar.pk).update(is_active=False)
+        self.assertFalse(found())  # switched off: gone at once

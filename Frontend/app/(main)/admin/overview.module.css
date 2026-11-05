@@ -1,0 +1,533 @@
+/*
+ * The admin Overview. The ink colors (--ink, --ink-raised, --ink-text) come
+ * from .shell in shell.module.css.
+ *
+ * One loud thing (the dark "needs your attention" card); everything else is
+ * quiet white cards.
+ */
+
+.overview {
+  display: grid;
+  gap: 20px;
+}
+
+.card {
+  min-width: 0;
+  padding: 22px 24px;
+  border: 1px solid #e7e5f0;
+  border-radius: 16px;
+  background: var(--card-color);
+  box-shadow: 0 1px 2px rgba(29, 24, 56, 0.04);
+}
+
+.cardHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.cardHead h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cardMeta {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.cardNote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.textButton,
+.kpiLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary-color);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.textButton:hover,
+.kpiLink:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---------- 1. Needs your attention ---------- */
+
+.attention {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 24px;
+  padding: 28px;
+  border-radius: 20px;
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(124, 58, 237, 0.45), transparent 55%),
+    var(--ink);
+  color: var(--ink-text);
+}
+
+.attentionTitle {
+  margin: 0;
+  max-width: 24ch;
+  color: #fff;
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.attentionText {
+  margin: 8px 0 0;
+  max-width: 54ch;
+  font-size: 15px;
+}
+
+.faces {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.faceStack {
+  display: flex;
+}
+
+/* Overlapping avatars, each with a ring in the card's color. */
+.faceStack > * {
+  margin-left: -6px;
+  box-shadow: 0 0 0 3px var(--ink);
+  border-radius: 999px;
+}
+
+.faceStack > *:first-child {
+  margin-left: 0;
+}
+
+.faceNames {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.attentionActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.inkPrimary,
+.inkGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.inkPrimary {
+  border: 0;
+  background: #fff;
+  color: var(--ink);
+}
+
+.inkPrimary:hover {
+  background: #ede9fe;
+}
+
+.inkGhost {
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: transparent;
+  color: #fff;
+}
+
+.inkGhost:hover {
+  background: var(--ink-raised);
+}
+
+.inkPrimary:focus-visible,
+.inkGhost:focus-visible,
+.attentionSide button:focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 2px;
+}
+
+.attentionSide {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 260px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attentionSide button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--ink-line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink-text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.attentionSide button:hover {
+  background: var(--ink-raised);
+}
+
+.attentionSide span {
+  flex: 1;
+}
+
+.attentionSide strong {
+  color: #fff;
+}
+
+/* ---------- 2. Key numbers ---------- */
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.kpi {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid #e7e5f0;
+  border-radius: 16px;
+  background: var(--card-color);
+  box-shadow: 0 1px 2px rgba(29, 24, 56, 0.04);
+}
+
+.kpiWarn {
+  border-color: #fcd9a1;
+  background: linear-gradient(180deg, #fffaf0, var(--card-color) 70%);
+}
+
+.kpiLabel {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.kpiValue {
+  color: var(--text-primary);
+  font-size: 34px;
+  line-height: 1.05;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpiHint {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.sparkline {
+  display: block;
+  width: 100%;
+  height: 36px;
+  margin-top: 4px;
+}
+
+.trendUp,
+.trendDown,
+.trendFlat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.trendUp {
+  color: var(--success);
+}
+
+.trendDown {
+  color: var(--danger);
+}
+
+.trendFlat {
+  color: var(--text-secondary);
+}
+
+/* ---------- 3. Charts ---------- */
+
+.charts {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.chartBox {
+  position: relative;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.gridLine {
+  stroke: #ece9f4;
+  stroke-width: 1;
+}
+
+.baseLine {
+  stroke: #d6d2e3;
+  stroke-width: 1;
+}
+
+.axisText {
+  fill: var(--text-secondary);
+  font-size: 12px;
+}
+
+.barGroup {
+  cursor: default;
+  outline: none;
+}
+
+.barGroup:focus-visible rect {
+  stroke: var(--primary-color);
+  stroke-width: 2;
+  rx: 6;
+}
+
+.tooltip {
+  position: absolute;
+  top: -8px;
+  transform: translate(-50%, -100%);
+  display: grid;
+  gap: 1px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12.5px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 8px 20px rgba(29, 24, 56, 0.2);
+}
+
+.tooltip span {
+  color: var(--ink-text);
+}
+
+.split {
+  display: grid;
+  gap: 18px;
+}
+
+.splitBar {
+  display: flex;
+  gap: 2px; /* a gap between the two parts, so they never blur together */
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.splitBar > span {
+  min-width: 4px;
+}
+
+.splitEmpty {
+  flex: 1;
+  background: #ece9f4;
+}
+
+.legend {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legend li {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+}
+
+.legendLabel {
+  color: var(--text-primary);
+}
+
+.legend strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.legendShare {
+  min-width: 40px;
+  color: var(--text-secondary);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- 4. Recent actions ---------- */
+
+.timeline {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline li {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 14px;
+  align-items: baseline;
+  padding: 10px 0;
+}
+
+/* The line joining the dots. */
+.timeline li:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 26px;
+  bottom: -6px;
+  width: 2px;
+  background: #ece9f4;
+}
+
+.timelineDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--primary-color);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.timelineText {
+  display: grid;
+  gap: 2px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.timelineText small {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.timeline time {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.allNumbers {
+  border: 1px solid #e7e5f0;
+  border-radius: 16px;
+  background: var(--card-color);
+}
+
+.allNumbers summary {
+  padding: 16px 24px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.allNumbers[open] summary {
+  border-bottom: 1px solid #e7e5f0;
+}
+
+.allNumbers > div {
+  padding: 16px;
+}
+
+/* ---------- Smaller screens ---------- */
+
+@media (max-width: 1100px) {
+  .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .attention {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .attentionSide {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .attention {
+    padding: 22px;
+  }
+
+  .attentionTitle {
+    font-size: 21px;
+  }
+
+  .card {
+    padding: 18px;
+  }
+
+  .kpi {
+    padding: 14px 16px;
+  }
+
+  .kpiValue {
+    font-size: 28px;
+  }
+}

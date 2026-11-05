@@ -47,6 +47,13 @@ class CookieJWTAuthentication(JWTAuthentication):
             # of AuthenticationFailed.)
             return None
 
+        profile = getattr(user, "profile", None)
+        password_changed_at = getattr(profile, "password_changed_at", None)
+        token_password_changed_at = validated_token.get("password_changed_at", "")
+        current_value = password_changed_at.isoformat() if password_changed_at else ""
+        if token_password_changed_at != current_value:
+            return None
+
         # Step 4: the user IS logged in by cookie, so protect against CSRF.
         self.enforce_csrf(request)
 
@@ -79,4 +86,17 @@ class CookieJWTAuthentication(JWTAuthentication):
 
         if reason:
             # 403 Forbidden: "you are logged in, but this request looks forged".
-            raise exceptions.PermissionDenied(f"CSRF Failed: {reason}")
+            raise exceptions.PermissionDenied(f"CSRF Failed: {reason}")
+
+
+
+def enforce_request_csrf(request):
+    """Check CSRF for cookie-based state-changing endpoints that skip JWT authentication."""
+    def do_nothing(incoming_request):
+        return HttpResponse()
+
+    check = CSRFCheck(do_nothing)
+    check.process_request(request)
+    reason = check.process_view(request, do_nothing, (), {})
+    if reason:
+        raise exceptions.PermissionDenied(f"CSRF Failed: {reason}")

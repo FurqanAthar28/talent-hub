@@ -21,8 +21,10 @@ import { ROUTES } from "../../../config/routes";
 import { useUiContentRecord } from "../../../hooks/useUiContent";
 import type { Profile } from "../../../services/profiles";
 import { Notice, Page, ui } from "../../../components/ui";
+import { useToast } from "../../../components/ToastProvider";
 import styles from "./edit.module.css";
 import AboutSection from "./components/candidate/AboutSection";
+import { useAiWriter } from "./components/candidate/ai/AiWriter";
 import BasicInfoSection from "./components/candidate/BasicInfoSection";
 import ExperienceSection from "./components/candidate/experience/ExperienceSection";
 import ProjectsSection from "./components/candidate/projects/ProjectsSection";
@@ -89,12 +91,18 @@ function formToRequestBody(form: ProfileFormData, role: Profile["role"], cvFile:
 export default function EditProfilePage() {
   const router = useRouter();
   const content = useUiContentRecord();
+  const showToast = useToast();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [formData, setFormData] = useState<ProfileFormData | null>(null);
   const [cvFile, setCvFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  // Picking an AI option only fills the box. "Save changes" still does the saving.
+  const aiWriter = useAiWriter((field, text) => {
+    setFormData((previous) => (previous ? { ...previous, [field]: text } : previous));
+  });
 
   // Load my profile once and fill the form.
   useEffect(() => {
@@ -174,6 +182,7 @@ export default function EditProfilePage() {
       }
 
       router.push(ROUTES.PROFILE);
+      showToast("Profile changes saved.");
     } catch {
       setError(MESSAGES.COMMON.SERVER_UNREACHABLE);
     } finally {
@@ -262,8 +271,12 @@ export default function EditProfilePage() {
         <div className={styles.content}>
           {/* ---------- 1. The main form: saved with "Save changes" ---------- */}
           <form onSubmit={handleSubmit} className="edit-profile-form" noValidate>
-            <BasicInfoSection {...sectionProps} showOpenToWork={isCandidate} />
-            <AboutSection {...sectionProps} />
+            <BasicInfoSection
+              {...sectionProps}
+              showOpenToWork={isCandidate}
+              ai={isCandidate ? aiWriter : undefined}
+            />
+            <AboutSection {...sectionProps} ai={isCandidate ? aiWriter : undefined} />
 
             {isCandidate && (
               <>

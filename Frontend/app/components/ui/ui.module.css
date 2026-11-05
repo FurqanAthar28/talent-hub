@@ -1,7 +1,7 @@
 /*
  * Shared building blocks for every signed-in page.
- * Same design rules as the dashboard:
- *   - thin borders, no shadows
+ * Same design rules as the admin area:
+ *   - white cards with a thin border, 16px corners and a very soft shadow
  *   - purple only for things you can click, or things that are "done"
  *   - plain headings in sentence case (no small capital labels above them)
  *   - the same width as the top menu (1128px)
@@ -11,7 +11,7 @@
 
 .page {
   max-width: 1128px;
-  margin: 88px auto 56px;
+  margin: calc(var(--topbar-height) + 28px) auto 56px;
   padding: 0 24px;
 }
 
@@ -28,10 +28,10 @@
 }
 
 .pageTitle {
-  font-size: 28px;
-  line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 750;
+  letter-spacing: -0.025em;
 }
 
 .pageSubtitle {
@@ -57,7 +57,8 @@
 .panel {
   background: var(--card-color);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
   padding: 24px;
 }
 

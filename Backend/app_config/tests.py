@@ -31,3 +31,12 @@ class UiContentTests(TestCase):
         # No default -> a clear error, so a missing text is noticed right away.
         with self.assertRaises(ImproperlyConfigured):
             UiContent.get_text("missing")
+
+
+class HealthCheckTests(TestCase):
+    def test_health_check_is_public_and_checks_the_database(self):
+        client = APIClient()
+        client.cookies["access_token"] = "broken"  # login cookies are ignored
+        response = client.get("/api/health/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})

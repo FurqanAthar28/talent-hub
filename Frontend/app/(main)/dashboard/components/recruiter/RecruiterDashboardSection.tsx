@@ -9,7 +9,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Hourglass, Inbox, MessageSquare, Search, ShieldCheck, UserPen, Users } from "lucide-react";
+import { Inbox, MessageSquare, Search, UserPen, Users } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { ROUTES } from "@/app/config/routes";
@@ -18,6 +18,7 @@ import type { Profile } from "@/app/services/profiles";
 import { getSkillOptions } from "@/app/services/skills";
 import styles from "../../dashboard.module.css";
 import ActivityTimeline from "../common/ActivityTimeline";
+import ApprovalStatus from "../common/ApprovalStatus";
 import FactStrip from "../common/FactStrip";
 import ProfileReadiness from "../common/ProfileReadiness";
 import ShortcutList from "../common/ShortcutList";
@@ -29,34 +30,6 @@ type RecruiterDashboardProps = {
   profile: Profile;
   activities: Activity[];
 };
-
-/** "Your account is being reviewed" / "wasn't approved". */
-function VerificationStatus({ profile }: { profile: Profile }) {
-  const rejected = profile.recruiterVerificationStatus === "rejected";
-
-  return (
-    <section className={`${styles.panel} ${styles.status}`} role="status">
-      <span className={`${styles.statusIcon} ${rejected ? styles.statusIconBad : ""}`}>
-        {rejected ? <ShieldCheck size={22} aria-hidden="true" /> : <Hourglass size={22} aria-hidden="true" />}
-      </span>
-      <div>
-        <h2 className={styles.searchTitle}>
-          {rejected ? "Your recruiter account wasn't approved" : "Your recruiter account is being reviewed"}
-        </h2>
-        <p className={styles.readinessMeta}>
-          {rejected
-            ? "Check your company details below, update them, and contact the admin team to be reviewed again."
-            : "An admin checks every new recruiter. Candidate search and messaging open as soon as you're approved. Meanwhile, complete your company details."}
-        </p>
-        {profile.recruiterVerificationNote && (
-          <p className={styles.statusNote}>
-            <strong>Note from the admin:</strong> {profile.recruiterVerificationNote}
-          </p>
-        )}
-      </div>
-    </section>
-  );
-}
 
 /** The big search box. Sends you to the candidates page with your search filled in. */
 function CandidateSearch({ candidatesCount }: { candidatesCount?: number }) {
@@ -133,7 +106,7 @@ function CandidateSearch({ candidatesCount }: { candidatesCount?: number }) {
 }
 
 export default function RecruiterDashboard({ profile, activities }: RecruiterDashboardProps) {
-  const isApproved = profile.recruiterVerificationStatus === "approved";
+  const isApproved = profile.approvalStatus === "approved";
   const [summary, setSummary] = useState<RecruiterSummary | null>(null);
 
   // The numbers only exist for approved recruiters (Django says "no" otherwise).
@@ -156,7 +129,7 @@ export default function RecruiterDashboard({ profile, activities }: RecruiterDas
 
   return (
     <>
-      {isApproved ? <CandidateSearch candidatesCount={summary?.candidatesCount} /> : <VerificationStatus profile={profile} />}
+      {isApproved ? <CandidateSearch candidatesCount={summary?.candidatesCount} /> : <ApprovalStatus profile={profile} />}
 
       <div className={styles.columns}>
         <div className={styles.stack}>

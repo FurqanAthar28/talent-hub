@@ -22,5 +22,6 @@ export function greetingForTime(now: Date = new Date()): string {
   const hour = now.getHours();
   if (hour < 12) return "Good morning";
   if (hour < 18) return "Good afternoon";
+  if (hour < 22) return "Good night";
   return "Good evening";
 }

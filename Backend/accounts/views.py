@@ -30,8 +30,6 @@ from django.contrib.auth.models import update_last_login
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.db import transaction
-from django.db.models import Value
-from django.db.models.functions import Replace
 from django.middleware.csrf import get_token, rotate_token
 from django.utils import timezone
 from rest_framework import status
@@ -55,8 +53,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from app_config.models import UiContent
 from config.exception_handler import first_error_message
 from profiles.models import Profile
-from profiles.permissions import is_app_admin, is_django_only_account, role_of
+from profiles.permissions import is_django_only_account, is_last_admin, role_of
 
+from .account_state import can_restore, nice_date, restore, restore_until, soft_delete, sync_is_active
+from .authentication import enforce_request_csrf
+from .emails import send_account_email
 from .models import AdminActionLog, EmailVerificationOTP, PasswordResetOTP
 from .serializers import (
     DeleteAccountSerializer,
@@ -110,11 +111,6 @@ def get_user_profile(user):
 def get_user_role(user):
     """The role from the profile (profiles/permissions.py). Django staff is NOT an app admin."""
     return role_of(user)
-
-
-def other_active_admins(user):
-    """Every switched-on app admin except this user."""
-    return User.objects.filter(is_active=True, profile__role=Profile.ROLE_ADMIN).exclude(pk=user.pk)
 
 
 def user_summary(user):
@@ -428,16 +424,9 @@ def signin_view(request):
     if user is None or not user.check_password(password):
         return message_response("signinFailed", status.HTTP_401_UNAUTHORIZED)
 
-    # Step 2: the password is right, but is the account switched on?
+    # Step 2: the password is right, but can this account sign in?
     if not user.is_active:
-        profile = get_user_profile(user)
-
-        if profile and not profile.email_verified:
-            return message_response(
-                "emailVerificationRequired", status.HTTP_403_FORBIDDEN
-            )
-
-        return message_response("accountDeactivated", status.HTTP_403_FORBIDDEN)
+        return blocked_account_response(user)
 
     # Step 3: Django developer accounts (createsuperuser) are for Django's
     # built-in site only. App admins are made with `manage.py create_admin`.
@@ -449,14 +438,22 @@ def signin_view(request):
             "Create an app admin with: python manage.py create_admin",
         )
 
-    # Step 4: all good. Remember when they logged in (the admin page shows this).
+    # Step 4: all good.
+    return signed_in_response(request, user)
+
+
+def signed_in_response(request, user):
+    """Give the browser fresh login cookies (used by sign-in AND restore)."""
+    # Remember when they logged in (the admin page shows this).
     # (The first value, "sender", is required by Django but not used here.)
     update_last_login(type(user), user)
 
     # Give them a fresh CSRF token for their new login.
     rotate_token(request)
 
+    password_changed_at = getattr(get_user_profile(user), "password_changed_at", None)
     refresh = RefreshToken.for_user(user)
+    refresh["password_changed_at"] = password_changed_at.isoformat() if password_changed_at else ""
     response = Response(
         {
             "message": ui_content_value("signinSuccess"),
@@ -468,6 +465,83 @@ def signin_view(request):
     return response
 
 
+def blocked_account_response(user):
+    """
+    The password was right, but the account can't sign in. Say exactly why
+    (only AFTER the password check, so strangers learn nothing).
+    `code` lets the page show the right button (e.g. "Restore my account").
+    """
+    profile = get_user_profile(user)
+    forbidden = status.HTTP_403_FORBIDDEN
+
+    if profile and profile.deleted_at:
+        if profile.deleted_by_admin:
+            return Response(
+                {"message": f"This account was removed by an admin. Reason: {profile.status_reason}", "code": "account_removed"},
+                status=forbidden,
+            )
+        if can_restore(profile):
+            until = restore_until(profile)
+            return Response(
+                {
+                    "message": f"You deleted this account. You can restore it until {nice_date(until)}.",
+                    "code": "account_deleted",
+                    "restoreUntil": until,
+                },
+                status=forbidden,
+            )
+        return Response({"message": "This account was deleted.", "code": "account_gone"}, status=forbidden)
+
+    if profile and profile.account_status == Profile.ACCOUNT_BANNED:
+        return Response(
+            {"message": f"This account has been banned. Reason: {profile.status_reason}", "code": "account_banned"},
+            status=forbidden,
+        )
+
+    if profile and profile.account_status == Profile.ACCOUNT_SUSPENDED:
+        return Response(
+            {
+                "message": f"Your account is suspended. Reason: {profile.status_reason} "
+                "Please contact support if you think this is a mistake.",
+                "code": "account_suspended",
+            },
+            status=forbidden,
+        )
+
+    if profile and not profile.email_verified:
+        return message_response("emailVerificationRequired", forbidden)
+
+    return message_response("accountDeactivated", forbidden)
+
+
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([EmailRateThrottle])
+def restore_account_view(request):
+    """
+    "Restore my account": the person deleted their account, changed their
+    mind within the grace period, and signs in again with their password.
+    """
+    serializer = SigninSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response({"message": first_error_message(serializer.errors)}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = find_user_by_email(serializer.validated_data["email"])
+    if user is None or not user.check_password(serializer.validated_data["password"]):
+        return message_response("signinFailed", status.HTTP_401_UNAUTHORIZED)
+
+    profile = get_user_profile(user)
+    if profile is None or not can_restore(profile):
+        return Response({"message": "There is no deleted account to restore."}, status=status.HTTP_400_BAD_REQUEST)
+
+    restore(user)
+    user.refresh_from_db()
+    if not user.is_active:  # e.g. they were suspended before deleting
+        return blocked_account_response(user)
+    return signed_in_response(request, user)
+
+
 @api_view(["POST"])
 @authentication_classes([])
 @permission_classes([AllowAny])
@@ -477,6 +551,7 @@ def refresh_view(request):
     When it runs out, the frontend calls this to get a new one,
     using the long-lived refresh token cookie. No password needed.
     """
+    enforce_request_csrf(request)
     raw_refresh_token = request.COOKIES.get(settings.JWT_REFRESH_COOKIE)
 
     # SimpleJWT's serializer checks the token, checks the user is still
@@ -510,6 +585,7 @@ def logout_view(request):
     Sign out. This works even if the access token already expired,
     so a user is never "stuck" logged in.
     """
+    enforce_request_csrf(request)
     raw_refresh_token = request.COOKIES.get(settings.JWT_REFRESH_COOKIE)
 
     if raw_refresh_token:
@@ -542,6 +618,8 @@ def me_view(request):
             "username": user.username,
             "fullName": user.get_full_name(),
             "role": get_user_role(user),
+            # How long a deleted account can be restored (the "Delete my account" box says it).
+            "deletionGraceDays": settings.ACCOUNT_DELETION_GRACE_DAYS,
         },
         status=status.HTTP_200_OK,
     )
@@ -683,13 +761,11 @@ def email_verification_confirm_view(request):
                 "emailVerificationInvalidOtp", status.HTTP_400_BAD_REQUEST
             )
 
-        # Correct code: mark the email as verified and switch the account on.
+        # Correct code: mark the email as verified. The shared rule switches the
+        # account on (unless it is suspended, banned or deleted).
         profile, _created = Profile.objects.get_or_create(user=user)
         profile.email_verified = True
-        profile.save(update_fields=["email_verified"])
-
-        user.is_active = True
-        user.save(update_fields=["is_active"])
+        sync_is_active(user, profile)
 
         mark_otp_used(otp_record)
 
@@ -729,9 +805,7 @@ def password_reset_request_view(request):
     if is_in_cooldown(
         PasswordResetOTP, user, settings.PASSWORD_RESET_RESEND_COOLDOWN_SECONDS
     ):
-        return message_response(
-            "passwordResetCooldown", status.HTTP_429_TOO_MANY_REQUESTS
-        )
+        return message_response("passwordResetEmailSent", status.HTTP_200_OK)
 
     expiry_minutes = settings.PASSWORD_RESET_OTP_EXPIRY_MINUTES
     code, otp_record = create_otp(PasswordResetOTP, user, expiry_minutes)
@@ -740,9 +814,7 @@ def password_reset_request_view(request):
 
     if not email_sent:
         mark_otp_used(otp_record)
-        return message_response(
-            "passwordResetEmailUnavailable", status.HTTP_503_SERVICE_UNAVAILABLE
-        )
+        return message_response("passwordResetEmailSent", status.HTTP_200_OK)
 
     return message_response("passwordResetEmailSent", status.HTTP_200_OK)
 
@@ -793,6 +865,11 @@ def password_reset_confirm_view(request):
         user.set_password(new_password)
         user.save(update_fields=["password"])
 
+        profile = get_user_profile(user)
+        if profile is not None:
+            profile.password_changed_at = timezone.now()
+            profile.save(update_fields=["password_changed_at"])
+
         mark_otp_used(otp_record)
 
         # Sign this user out on every other browser and device.
@@ -811,11 +888,9 @@ def password_reset_confirm_view(request):
 @throttle_classes([DeleteAccountRateThrottle])
 def delete_account_view(request):
     """
-    Delete the logged-in user's account and their personal data, for good.
-
-    Deleting the user also deletes ("cascades" to) their profile, skills,
-    projects, experience, connections, requests and chats.
-    Their CV file is removed by profiles/signals.py.
+    "Delete my account" (a SOFT delete, see accounts/account_state.py).
+    Everything disappears at once, but for ACCOUNT_DELETION_GRACE_DAYS the
+    person can change their mind and restore it by signing in.
     """
     serializer = DeleteAccountSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -829,7 +904,7 @@ def delete_account_view(request):
         )
 
     # Never leave the app with NO admin (nobody could approve recruiters).
-    if is_app_admin(user) and not other_active_admins(user).exists():
+    if is_last_admin(user):
         return Response(
             {"message": "You are the only admin. Make someone else an admin first."},
             status=status.HTTP_403_FORBIDDEN,
@@ -841,29 +916,24 @@ def delete_account_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    email = user.email
+    # Soft delete: hidden everywhere at once, signed out on every device.
+    # They can restore it by signing in during the grace period; after that
+    # the daily job (purge_deleted_accounts) deletes it for good.
+    profile = soft_delete(user)
+    AdminActionLog.objects.create(
+        actor=None,
+        target_user=user,
+        action="account_soft_deleted",
+        description="A user deleted their own account (restorable)",
+    )
+    until = restore_until(profile)
+    send_account_email(user, "deleted", until)
 
-    with transaction.atomic():  # all steps happen, or none
-        # 1. Sign out on every device.
-        log_out_everywhere(user)
-
-        # 2. Old admin log lines may mention this email in their text
-        #    (e.g. "Deactivated ali@example.com"). Replace it, so no
-        #    personal data stays behind.
-        AdminActionLog.objects.filter(description__contains=email).update(
-            description=Replace("description", Value(email), Value("a deleted user"))
-        )
-
-        # 3. Delete the user (and everything that belongs to them).
-        user.delete()
-
-        # 4. Keep a record THAT an account was deleted (but not whose).
-        AdminActionLog.objects.create(
-            actor=None,
-            action="account_deleted",
-            description="A user deleted their own account",
-        )
-
-    response = Response({"message": "Your account has been deleted."})
+    response = Response(
+        {
+            "message": f"Your account is deleted. You can restore it by signing in until {nice_date(until)}.",
+            "restoreUntil": until,
+        }
+    )
     clear_auth_cookies(response)
     return response

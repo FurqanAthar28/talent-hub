@@ -1,20 +1,20 @@
 """
 The rules of the network, written in ONE place.
 
-Before, "who is allowed to use connections" was written 3 different ways
-(in views.py, admin_views.py and serializers.py), and they didn't agree.
-Now every file asks this module.
+Before, "who is allowed to use connections" was written 3 different ways,
+and they didn't agree. Now every file asks this module.
 
 WHAT'S IN HERE
 1. Who can use connections      -> network_users(), is_network_user()
-2. Connecting and disconnecting -> are_connected(), connect_users(), disconnect_users()
+2. Connecting and disconnecting -> are_connected(), connect_users(), disconnect_users(),
+                                   network_connections() (each pair once, for counts and lists)
 3. Relationship labels          -> get_relationships()
 4. Conversations                -> get_or_create_conversation()
 """
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 
 from profiles.models import Profile
 
@@ -33,18 +33,15 @@ def network_users():
     All users who can connect and message:
     - account switched on (active),
     - not staff/admin,
-    - a candidate, OR a recruiter that an admin has approved.
+    - a candidate or a recruiter that an admin has APPROVED.
+      (Waiting or "not approved" people can edit their profile, nothing more.)
     """
     return User.objects.filter(
         is_active=True,
         is_staff=False,
         is_superuser=False,
-    ).filter(
-        Q(profile__role=Profile.ROLE_CANDIDATE)
-        | Q(
-            profile__role=Profile.ROLE_RECRUITER,
-            profile__recruiter_verification_status=Profile.RECRUITER_VERIFICATION_APPROVED,
-        )
+        profile__role__in=[Profile.ROLE_CANDIDATE, Profile.ROLE_RECRUITER],
+        profile__approval_status=Profile.APPROVAL_APPROVED,
     )
 
 
@@ -78,8 +75,26 @@ def connect_users(user_a, user_b):
     `transaction.atomic` = both rows are saved, or neither.
     """
     with transaction.atomic():
-        Connection.objects.get_or_create(user=user_a, connected_user=user_b)
+        first_created = Connection.objects.get_or_create(user=user_a, connected_user=user_b)[1]
         Connection.objects.get_or_create(user=user_b, connected_user=user_a)
+        return first_created
+
+
+def network_connections():
+    """
+    Every connection between two network users, each pair ONCE.
+
+    A connection is saved as 2 rows (A->B and B->A); `user_id < connected_user_id`
+    keeps one of them. The admin numbers AND the admin list both use this,
+    so they always agree. (Before, the number counted every row, even for
+    switched-off people, so it could say 1 while the list showed 0.)
+    """
+    people = network_users()
+    return Connection.objects.filter(
+        user_id__lt=F("connected_user_id"),
+        user__in=people,
+        connected_user__in=people,
+    )
 
 
 def disconnect_users(user_a, user_b):

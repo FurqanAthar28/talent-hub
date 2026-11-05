@@ -1,0 +1,35 @@
+/* Short success messages shown above every page. */
+.toast {
+  position: fixed;
+  z-index: 1000;
+  top: calc(var(--topbar-height) + 16px);
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--card-color);
+  box-shadow: var(--shadow-pop);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  margin-left: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 640px) {
+  .toast {
+    right: 16px;
+    left: 16px;
+    max-width: none;
+  }
+}

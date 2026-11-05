@@ -33,6 +33,21 @@ def is_app_admin(user):
     )
 
 
+def active_admins():
+    """Every switched-on app admin."""
+    from django.contrib.auth.models import User  # here, to avoid an import loop
+
+    return User.objects.filter(is_active=True, profile__role=Profile.ROLE_ADMIN)
+
+
+def is_last_admin(user):
+    """
+    Is this the ONLY switched-on admin? Then it may not be demoted, switched
+    off or deleted: nobody would be left to approve people or fix problems.
+    """
+    return is_app_admin(user) and not active_admins().exclude(pk=user.pk).exists()
+
+
 def is_django_only_account(user):
     """
     A developer account for Django's built-in site, not an app account.
@@ -56,7 +71,7 @@ def is_approved_recruiter(user):
     return (
         profile is not None
         and profile.role == Profile.ROLE_RECRUITER
-        and profile.recruiter_verification_status == Profile.RECRUITER_VERIFICATION_APPROVED
+        and profile.approval_status == Profile.APPROVAL_APPROVED
     )
 
 

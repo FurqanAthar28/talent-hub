@@ -4,16 +4,19 @@ Tests for connections and messages. Run them with:
     python manage.py test connections
 """
 
+from unittest import mock
+
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.db import connection as db_connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
-from accounts.models import AdminActionLog
 from profiles.models import Profile
 
 from .models import Connection, ConnectionRequest
+from .throttles import ConnectionRequestThrottle, MessageThrottle
 
 
 class NetworkTests(TestCase):
@@ -22,8 +25,8 @@ class NetworkTests(TestCase):
         Profile.objects.create(
             user=user,
             role=role,
-            recruiter_verification_status=(
-                Profile.RECRUITER_VERIFICATION_APPROVED if approved else Profile.RECRUITER_VERIFICATION_PENDING
+approval_status=(
+                Profile.APPROVAL_APPROVED if approved else Profile.APPROVAL_PENDING
             ),
         )
         return user
@@ -34,6 +37,7 @@ class NetworkTests(TestCase):
         return client
 
     def setUp(self):
+        cache.clear()  # rate-limit counters start at zero for every test
         self.ali = self.make_user("ali@example.com")
         self.sara = self.make_user("sara@example.com")
         self.ali_client = self.client_for(self.ali)
@@ -68,6 +72,12 @@ class NetworkTests(TestCase):
         self.assertNotIn(pending_recruiter.pk, listed_ids)
 
     # ----- privacy -----
+
+    def test_people_waiting_for_approval_cant_use_the_network(self):
+        waiting = self.client_for(self.make_user("new@example.com", approved=False))
+        self.assertEqual(waiting.get("/api/connections/users/").status_code, 403)
+        people = [user["email"] for user in self.ali_client.get("/api/connections/users/").json()]
+        self.assertNotIn("new@example.com", people)  # and nobody sees them in the list
 
     def test_email_only_visible_to_connections(self):
         sara_row = self.ali_client.get("/api/connections/users/").json()[0]
@@ -163,6 +173,29 @@ class NetworkTests(TestCase):
         self.assertEqual(self.ali_client.post(url, {"body": "Still there?"}, format="json").status_code, 403)
         self.assertEqual(self.ali_client.get(url).status_code, 200)  # old messages still readable
 
+    def test_sending_messages_too_fast_is_limited_but_reading_is_not(self):
+        self.connect()
+        url = f"/api/connections/conversations/{self.start_chat()}/messages/"  # 1 (new chat)
+
+        with mock.patch.object(MessageThrottle, "THROTTLE_RATES", {"message": "3/min"}):
+            for text in ("one", "two"):  # 2 and 3
+                self.assertEqual(self.ali_client.post(url, {"body": text}, format="json").status_code, 201)
+            response = self.ali_client.post(url, {"body": "spam"}, format="json")  # 4: too many
+            self.assertEqual(response.status_code, 429)
+            self.assertIn("message", response.json())  # a friendly text for the page
+
+            self.assertEqual(self.ali_client.get(url).status_code, 200)  # reading still works
+            # Sara has her own counter, so Ali's spam never blocks her.
+            self.assertEqual(self.sara_client.post(url, {"body": "hi"}, format="json").status_code, 201)
+
+    def test_connection_requests_are_limited(self):
+        with mock.patch.object(ConnectionRequestThrottle, "THROTTLE_RATES", {"connection_request": "1/hour"}):
+            first = self.ali_client.post("/api/connections/send/", {"receiverId": self.sara.pk}, format="json")
+            self.assertEqual(first.status_code, 201)
+            other = self.make_user("omar@example.com")
+            second = self.ali_client.post("/api/connections/send/", {"receiverId": other.pk}, format="json")
+            self.assertEqual(second.status_code, 429)
+
     def test_strangers_cannot_read_a_chat(self):
         self.connect()
         chat_id = self.start_chat()
@@ -170,10 +203,12 @@ class NetworkTests(TestCase):
         response = stranger.get(f"/api/connections/conversations/{chat_id}/messages/")
         self.assertEqual(response.status_code, 404)
 
-    def test_admin_reading_a_chat_is_logged(self):
+    def test_admins_cannot_read_private_chats(self):
         self.connect()
         chat_id = self.start_chat()
-        admin = self.make_user("boss@example.com", role=Profile.ROLE_ADMIN)
-        response = self.client_for(admin).get(f"/api/connections/admin/conversations/{chat_id}/")
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(AdminActionLog.objects.filter(action="conversation_viewed", actor=admin).exists())
+        admin = self.client_for(self.make_user("boss@example.com", role=Profile.ROLE_ADMIN))
+        # The old "read any chat" addresses are gone (admins see reported messages only).
+        self.assertEqual(admin.get("/api/connections/admin/conversations/").status_code, 404)
+        self.assertEqual(admin.get(f"/api/connections/admin/conversations/{chat_id}/").status_code, 404)
+        # And the normal chat address only works for the two people in it.
+        self.assertEqual(admin.get(f"/api/connections/conversations/{chat_id}/messages/").status_code, 403)

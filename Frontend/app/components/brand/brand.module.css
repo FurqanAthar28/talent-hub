@@ -40,3 +40,9 @@
   outline-offset: 4px;
   border-radius: 6px;
 }
+
+@media (max-width: 380px) {
+  .name {
+    font-size: 16px;
+  }
+}

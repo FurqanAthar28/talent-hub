@@ -59,10 +59,9 @@ class ProfileSerializer(serializers.ModelSerializer):
     hiringTitle = serializers.CharField(source="hiring_title", read_only=True)
     adminTitle = serializers.CharField(source="admin_title", read_only=True)
     openToWork = serializers.BooleanField(source="open_to_work", read_only=True)
-    recruiterVerificationStatus = serializers.CharField(
-        source="recruiter_verification_status", read_only=True
-    )
-    recruiterVerificationNote = serializers.SerializerMethodField()
+    approvalStatus = serializers.CharField(source="approval_status", read_only=True)
+    rejectionReason = serializers.SerializerMethodField()
+    approvalMissing = serializers.SerializerMethodField()
     cvUrl = serializers.SerializerMethodField()
     profileCompletion = serializers.SerializerMethodField()
     missingFields = serializers.SerializerMethodField()
@@ -95,8 +94,9 @@ class ProfileSerializer(serializers.ModelSerializer):
             "profileCompletion",
             "profileViewers",
             "openToWork",
-            "recruiterVerificationStatus",
-            "recruiterVerificationNote",
+            "approvalStatus",
+            "rejectionReason",
+            "approvalMissing",
             "missingFields",
             "completionChecklist",
             "skillsCount",
@@ -109,13 +109,22 @@ class ProfileSerializer(serializers.ModelSerializer):
         return self.context.get("show_private", False)
 
     def get_fullName(self, obj):
-        return obj.user.get_full_name() or obj.user.email
+        return obj.user.get_full_name() or "Member"
 
     def get_email(self, obj):
         return obj.user.email if self.show_private() else ""
 
-    def get_recruiterVerificationNote(self, obj):
-        return obj.recruiter_verification_note if self.show_private() else ""
+    def get_rejectionReason(self, obj):
+        """Only the person themselves (and admins) see WHY they weren't approved."""
+        return obj.rejection_reason if self.show_private() else ""
+
+    def get_approvalMissing(self, obj):
+        """What they still have to add before an admin can approve them (owner only)."""
+        if not self.show_private() or obj.approval_status == Profile.APPROVAL_APPROVED:
+            return []
+        from .approval import missing_profile_parts  # late import: approval imports models
+
+        return missing_profile_parts(obj)
 
     def get_cvUrl(self, obj):
         """

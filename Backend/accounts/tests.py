@@ -59,6 +59,9 @@ class AuthFlowTests(TestCase):
         return match.group(1)
 
     def post(self, url, data=None, client=None, **extra):
+        browser = client or self.client
+        if url in ("/api/accounts/refresh/", "/api/accounts/logout/") and "csrftoken" in browser.cookies:
+            extra.setdefault("HTTP_X_CSRFTOKEN", browser.cookies["csrftoken"].value)
         return (client or self.client).post(url, data or {}, format="json", **extra)
 
     def sign_up(self, email):
@@ -171,6 +174,19 @@ class AuthFlowTests(TestCase):
         other.cookies["refresh_token"] = refresh_token
         self.assertEqual(self.post("/api/accounts/refresh/", client=other).status_code, 401)
 
+    def test_refresh_and_logout_require_csrf(self):
+        self.sign_up_and_verify("ali@example.com")
+        self.sign_in("ali@example.com")
+
+        self.assertEqual(
+            self.client.post("/api/accounts/refresh/", {}, format="json").status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.post("/api/accounts/logout/", {}, format="json").status_code,
+            403,
+        )
+
     def test_password_reset_logs_out_other_devices(self):
         self.sign_up_and_verify("sara@example.com")
 
@@ -182,10 +198,10 @@ class AuthFlowTests(TestCase):
             self.post("/api/accounts/password-reset/request/", {"email": "sara@example.com"}).status_code,
             200,
         )
-        # Asking again straight away -> "please wait".
+        # Repeated requests use the same public response as unknown accounts.
         self.assertEqual(
             self.post("/api/accounts/password-reset/request/", {"email": "sara@example.com"}).status_code,
-            429,
+            200,
         )
 
         response = self.post(
@@ -198,6 +214,7 @@ class AuthFlowTests(TestCase):
         old_login = APIClient()
         old_login.cookies["refresh_token"] = laptop_refresh_token
         self.assertEqual(self.post("/api/accounts/refresh/", client=old_login).status_code, 401)
+        self.assertEqual(laptop.get("/api/accounts/me/").status_code, 401)
 
         # The new password works.
         self.assertEqual(self.sign_in("sara@example.com", "N3w-pass-word!").status_code, 200)
@@ -337,7 +354,7 @@ class SignupRulesTests(TestCase):
         self.assertFalse(user.profile.email_verified)
         self.assertEqual(user.email, "sara@example.com")
         self.assertEqual((user.first_name, user.last_name), ("Sara", "Ahmed"))
-        self.assertEqual(user.profile.recruiter_verification_status, "pending")
+        self.assertEqual(user.profile.approval_status, "pending")
 
 
 class OneTimeCodeTests(TestCase):
@@ -383,21 +400,19 @@ class DeleteAccountTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
 
-    def test_right_password_deletes_everything(self):
+    def test_right_password_deletes_softly(self):
+        """Hidden and signed out at once, but restorable (the daily job deletes for good)."""
         from accounts.models import AdminActionLog
         from profiles.models import Profile
-
-        AdminActionLog.objects.create(action="user_deactivated", description="Deactivated ali@example.com")
 
         response = self.client.post(self.URL, {"password": PASSWORD}, format="json")
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.cookies["access_token"].value, "")  # logged out
 
-        self.assertFalse(User.objects.filter(email="ali@example.com").exists())
-        self.assertFalse(Profile.objects.filter(user_id=self.user.pk).exists())
-        # No log line mentions the email any more.
-        self.assertFalse(AdminActionLog.objects.filter(description__contains="ali@example.com").exists())
-        self.assertTrue(AdminActionLog.objects.filter(action="account_deleted").exists())
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.is_active)
+        self.assertIsNotNone(Profile.objects.get(user=self.user).deleted_at)
+        self.assertTrue(AdminActionLog.objects.filter(action="account_soft_deleted").exists())
 
     def test_superuser_cannot_delete_from_the_website(self):
         self.user.is_superuser = True

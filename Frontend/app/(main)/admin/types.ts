@@ -1,12 +1,17 @@
+import type { AccountStatus, ApprovalStatus, RejectionReason } from "@/app/config/constants";
+
 // Must match admin_stats_view in Backend/admin_panel/views.py
 export type AdminStats = {
   users: number;
   activeUsers: number;
-  inactiveUsers: number;
+  inactiveUsers: number; // can't sign in, for any reason
+  suspendedUsers: number;
+  bannedUsers: number;
+  deletedUsers: number; // deleted, still restorable
   adminUsers: number;
   candidates: number;
   recruiters: number;
-  pendingRecruiters: number;
+  pendingApprovals: number; // candidates AND recruiters waiting
   skills: number;
   projects: number;
   experiences: number;
@@ -29,8 +34,13 @@ export type AdminUser = {
   projectsCount: number;
   experiencesCount: number;
   connectionsCount: number;
-  recruiterVerificationStatus: "pending" | "approved" | "rejected";
-  recruiterVerificationNote: string;
+  approvalStatus: ApprovalStatus;
+  rejectionReason: RejectionReason | "";
+  accountStatus: AccountStatus;
+  statusReason: string; // why it was suspended, banned or deleted by an admin
+  deletedAt: string | null; // null = not deleted
+  deletedByAdmin: boolean; // only an admin can restore it
+  restoreUntil: string | null; // last moment it can be restored
 };
 
 export type AdminConnection = {
@@ -63,8 +73,8 @@ export type AdminMe = {
   lastSignIn: string | null;
   impact: {
     totalActions: number;
-    recruitersApproved: number;
-    recruitersRejected: number;
+    peopleApproved: number;
+    peopleNotApproved: number;
     accountsManaged: number;
     connectionsMade: number;
     textsEdited: number;
@@ -79,4 +89,20 @@ export type AdminUiContentItem = {
   id: number;
   key: string;
   value: string;
+};
+
+// Must match admin_approval_checks_view in Backend/admin_panel/views.py
+export type ApprovalCheck = {
+  key: string;
+  label: string;
+  passed: boolean;
+  required: boolean; // required checks must pass before Approve works
+  detail: string;
+};
+
+export type ApprovalReview = {
+  checks: ApprovalCheck[];
+  canApprove: boolean;
+  needsLinkedinCheck: boolean;
+  rejectionReasons: { value: RejectionReason; label: string }[];
 };

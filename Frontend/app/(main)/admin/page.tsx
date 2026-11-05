@@ -1,12 +1,16 @@
 "use client";
 
 /**
- * Admin page, in 5 tabs:
- *   Overview     -> numbers, recruiters waiting for approval, recent admin actions
- *   Users        -> every account: role, switch on/off, approve recruiters
+ * Admin area, in 6 sections (listed in sections.ts; the frame is AdminShell):
+ *   Overview     -> what needs you, key numbers with trends, sign-ups chart, recent actions
+ *   Approvals    -> everyone waiting, oldest first
+ *   Users        -> every account: role, approval, suspend / ban / delete / restore
  *   Connections  -> connect two people by hand, or remove a connection
  *   Activity log -> everything admins changed
  *   Page texts   -> edit the app's wording without code
+ *
+ * The open section is kept in the address (/admin?tab=users), so Refresh
+ * and shared links land in the same place.
  *
  * AFTER EACH ACTION
  * We update the changed item from Django's answer, then quietly refresh only
@@ -14,42 +18,41 @@
  * data and replaced the page with "Loading", losing your place and search.)
  *
  * SAFETY
- * Switching an account off, and changing a role, ask "Are you sure?" first.
+ * Suspending, banning, deleting, changing a role, turning someone down and
+ * removing a connection all ask first, in the app's own confirm box
+ * (useConfirm), not the browser's plain pop-up. Suspend, ban and delete
+ * also ask for a reason (the person sees it when they try to sign in).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { UserCheck } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 import { errorText } from "../../api/client";
 import { clearUiContentCache } from "../../api/ui-content";
-import { Avatar, EmptyState, Notice, Page, Panel, Tabs, ui } from "../../components/ui";
+import { Notice } from "../../components/ui";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ROUTES } from "../../config/routes";
 import { useUiContent } from "../../hooks/useUiContent";
 import * as adminApi from "../../services/admin";
+import { ACCOUNT_ACTION_TEXT, REASON_MAX_LENGTH, USER_FILTERS, type UserFilter } from "./accountActions";
 import { isAdmin, useCurrentUser } from "../CurrentUserContext";
-import styles from "./admin.module.css";
+import AdminShell from "./components/AdminShell";
+import ApprovalsSection from "./components/ApprovalsSection";
 import AuditLogsSection from "./components/AuditLogsSection";
+import OverviewSection from "./components/OverviewSection";
+import { buildInsights } from "./insights";
+import { sectionFromAddress, showSectionInAddress, type SectionId } from "./sections";
 import ConnectionsSection from "./components/ConnectionsSection";
-import StatsSection from "./components/StatsSection";
 import UiContentSection from "./components/UiContentSection";
-import UsersSection, { VerificationBadge } from "./components/UsersSection";
+import ApprovalReview from "./components/ApprovalReview";
+import UsersSection from "./components/UsersSection";
 import type { AdminAuditLog, AdminConnection, AdminStats, AdminUiContentItem, AdminUser } from "./types";
 
-const TABS = ["overview", "users", "connections", "activity", "texts"] as const;
-type Tab = (typeof TABS)[number];
-
-/** The tab named in the address (/admin?tab=users), so other pages can link straight to it. */
-function tabFromAddress(): Tab | null {
-  const wanted = new URLSearchParams(window.location.search).get("tab");
-  return TABS.find((tab) => tab === wanted) ?? null;
-}
 type Message = { tone: "success" | "error"; text: string } | null;
 
 // How many recent actions the Overview shows.
 const RECENT_ACTIVITY_COUNT = 5;
-// Django accepts notes up to this length.
-const MAX_NOTE_LENGTH = 255;
 
 function formatDate(value: string | null) {
   if (!value) return "";
@@ -66,8 +69,9 @@ export default function AdminPage() {
   const router = useRouter();
   const text = useUiContent();
   const me = useCurrentUser();
+  const { confirm, dialog } = useConfirm();
 
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useState<SectionId>("overview");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<Message>(null);
 
@@ -78,6 +82,7 @@ export default function AdminPage() {
   const [texts, setTexts] = useState<AdminUiContentItem[]>([]);
 
   const [userSearch, setUserSearch] = useState("");
+  const [userFilter, setUserFilter] = useState<UserFilter>("all");
   const [textSearch, setTextSearch] = useState("");
   const [textDrafts, setTextDrafts] = useState<Record<string, string>>({});
   const [firstUserId, setFirstUserId] = useState("");
@@ -88,6 +93,8 @@ export default function AdminPage() {
   const [connecting, setConnecting] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [savingTextKey, setSavingTextKey] = useState<string | null>(null);
+  // The person whose approval Review window is open (null = closed).
+  const [reviewing, setReviewing] = useState<AdminUser | null>(null);
 
   const canView = isAdmin(me);
 
@@ -110,7 +117,7 @@ export default function AdminPage() {
       .then(([newStats, newUsers, newConnections, newLogs, newTexts]) => {
         if (!pageIsOpen) return;
         // Open the tab named in the address (?tab=users), if any.
-        setTab((current) => tabFromAddress() ?? current);
+        setTab((current) => sectionFromAddress() ?? current);
         setStats(newStats);
         setUsers(newUsers);
         setConnections(newConnections);
@@ -163,43 +170,53 @@ export default function AdminPage() {
     }
   }
 
-  function handleToggleActive(user: AdminUser) {
-    const name = user.fullName || user.email;
-    if (user.is_active && !window.confirm(`Switch off ${name}'s account? They won't be able to sign in.`)) return;
+  /** Suspend, ban, delete or undo one: always asks first (and asks for a reason where needed). */
+  async function handleAccountAction(user: AdminUser, action: adminApi.AccountAction) {
+    const name = adminApi.displayName(user);
+    const words = ACCOUNT_ACTION_TEXT[action];
+    const answer = await confirm({
+      title: words.title(name),
+      text: words.text(me.deletionGraceDays),
+      confirmLabel: words.confirmLabel,
+      tone: words.tone,
+      note: words.reason
+        ? {
+            label: "Reason (they will see this)",
+            placeholder: "e.g. The company details couldn't be confirmed",
+            maxLength: REASON_MAX_LENGTH,
+            required: true,
+          }
+        : undefined,
+    });
+    if (!answer.confirmed) return;
 
-    void runUserAction(
-      user,
-      () => adminApi.setUserActive(user.id, !user.is_active),
-      user.is_active ? `${name} was switched off.` : `${name} was switched on.`
-    );
+    void runUserAction(user, () => adminApi.runAccountAction(user.id, action, answer.note), `${words.label}: done.`);
   }
 
-  function handleChangeRole(user: AdminUser, role: AdminUser["role"]) {
+  async function handleChangeRole(user: AdminUser, role: AdminUser["role"]) {
     if (role === user.role) return;
 
-    const name = user.fullName || user.email;
-    const warning = role === "admin" ? " Admins can see and change everything." : "";
-    if (!window.confirm(`Make ${name} a ${role}?${warning}`)) return;
+    const name = adminApi.displayName(user);
+    const answer = await confirm({
+      title: `Make ${name} a ${role}?`,
+      text:
+        role === "admin"
+          ? "Admins have full control: they can approve, suspend, ban and delete every account."
+          : `They will see the app as a ${role} from their next page load.`,
+      confirmLabel: `Make ${role}`,
+      tone: role === "admin" ? "danger" : "primary",
+    });
+    if (!answer.confirmed) return;
 
     void runUserAction(user, () => adminApi.setUserRole(user.id, role), `${name} is now a ${role}.`);
   }
 
-  function handleVerify(user: AdminUser, status: "approved" | "rejected") {
-    const name = user.fullName || user.email;
-    let note = "";
-
-    if (status === "rejected") {
-      // The recruiter sees this note on their dashboard, so they know what to fix.
-      const answer = window.prompt(`Why is ${name} not approved? They will see this note.`, "");
-      if (answer === null) return; // Cancel pressed
-      note = answer.trim().slice(0, MAX_NOTE_LENGTH);
-    }
-
-    void runUserAction(
-      user,
-      () => adminApi.setRecruiterVerification(user.id, status, note),
-      status === "approved" ? `${name} is approved.` : `${name} was not approved.`
-    );
+  /** The Review window saved a decision: show it in the list and the numbers. */
+  function handleDecided(updated: AdminUser, doneMessage: string) {
+    setReviewing(null);
+    replaceUser(updated);
+    setMessage({ tone: "success", text: doneMessage });
+    void refreshSummary();
   }
 
   async function handleConnect() {
@@ -223,7 +240,13 @@ export default function AdminPage() {
 
   async function handleDisconnect(connection: AdminConnection) {
     if (removingId !== null) return;
-    if (!window.confirm(`Remove the connection between ${connection.userName} and ${connection.connectedUserName}?`)) return;
+    const answer = await confirm({
+      title: "Remove this connection?",
+      text: `${connection.userName} and ${connection.connectedUserName} will no longer be connected or able to message each other. They can connect again later.`,
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (!answer.confirmed) return;
 
     setRemovingId(connection.id);
     setMessage(null);
@@ -265,27 +288,37 @@ export default function AdminPage() {
 
   // ---------- Lists for the tabs ----------
 
-  const filteredUsers = useMemo(
+  // Search first, then the status filter; the filter counts follow the search.
+  const searchedUsers = useMemo(
     () => users.filter((user) => matches(userSearch, user.fullName, user.email)),
     [users, userSearch]
   );
 
-  const pendingRecruiters = useMemo(
-    () => users.filter((user) => user.role === "recruiter" && user.recruiterVerificationStatus === "pending"),
-    [users]
+  const filterCounts = useMemo(() => {
+    const counts = Object.fromEntries(USER_FILTERS.map((option) => [option.value, 0])) as Record<UserFilter, number>;
+    for (const user of searchedUsers) {
+      counts.all += 1;
+      counts[adminApi.accountState(user)] += 1;
+      if (adminApi.isWaitingForApproval(user)) counts.waiting += 1;
+    }
+    return counts;
+  }, [searchedUsers]);
+
+  const filteredUsers = useMemo(
+    () =>
+      searchedUsers.filter((user) => {
+        if (userFilter === "all") return true;
+        if (userFilter === "waiting") return adminApi.isWaitingForApproval(user);
+        return adminApi.accountState(user) === userFilter;
+      }),
+    [searchedUsers, userFilter]
   );
 
+  const insights = useMemo(() => buildInsights(users, connections, auditLogs), [users, connections, auditLogs]);
+  const { waiting } = insights;
+
   // Only people who may use the network can be connected.
-  const networkUsers = useMemo(
-    () =>
-      users.filter(
-        (user) =>
-          user.is_active &&
-          !user.is_staff &&
-          (user.role === "candidate" || (user.role === "recruiter" && user.recruiterVerificationStatus === "approved"))
-      ),
-    [users]
-  );
+  const networkUsers = useMemo(() => users.filter(adminApi.isNetworkUser), [users]);
 
   const filteredTexts = useMemo(
     () => texts.filter((item) => matches(textSearch, item.key, item.value)),
@@ -294,87 +327,69 @@ export default function AdminPage() {
 
   if (!canView) return null;
 
-  const tabs = [
-    { id: "overview" as const, label: "Overview" },
-    { id: "users" as const, label: text("adminUsers", "Users"), count: users.length },
-    { id: "connections" as const, label: "Connections", count: connections.length },
-    { id: "activity" as const, label: "Activity log" },
-    { id: "texts" as const, label: "Page texts", count: texts.length },
-  ];
+  /** Open a section: remember it in the address and start at the top. */
+  function openSection(id: SectionId) {
+    setTab(id);
+    setMessage(null);
+    showSectionInAddress(id);
+    window.scrollTo({ top: 0 });
+  }
+
+  /** Overview shortcuts like "2 accounts suspended" open Users with that filter. */
+  function openUsers(filter: UserFilter) {
+    setUserSearch("");
+    setUserFilter(filter);
+    openSection("users");
+  }
+
+  async function reloadAll() {
+    setLoading(true);
+    try {
+      const [newUsers, newConnections] = await Promise.all([adminApi.getUsers(), adminApi.getConnections()]);
+      setUsers(newUsers);
+      setConnections(newConnections);
+      await refreshSummary();
+    } catch (error) {
+      setMessage({ tone: "error", text: errorText(error, "Couldn't refresh the admin data.") });
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <Page
-      title={text("adminDashboard", "Admin")}
-      subtitle={text("adminIntro", "Manage accounts, approve recruiters and keep the platform tidy.")}
+    <AdminShell
+      active={tab}
+      onChange={openSection}
+      counts={{ approvals: waiting.length }}
+      adminName={me.fullName || me.email}
+      actions={
+        <button type="button" className="btn-outline btn-sm" onClick={reloadAll} disabled={loading}>
+          <RefreshCw size={15} aria-hidden="true" />
+          <span>{loading ? "Loading..." : "Refresh"}</span>
+        </button>
+      }
     >
-      <div className={styles.tabsBar}>
-        <Tabs items={tabs} active={tab} onChange={setTab} label="Admin sections" />
-      </div>
-
       {message && <Notice tone={message.tone}>{message.text}</Notice>}
 
-      {loading ? (
+      {loading && users.length === 0 ? (
         <p className="muted">{text("loading", "Loading...")}</p>
       ) : (
         <>
           {tab === "overview" && (
-            <div className={ui.stack}>
-              {/* The one thing that needs an admin's decision comes first. */}
-              <Panel
-                flush
-                title={
-                  pendingRecruiters.length === 0
-                    ? "No recruiters waiting for approval"
-                    : `${pendingRecruiters.length} ${pendingRecruiters.length === 1 ? "recruiter is" : "recruiters are"} waiting for approval`
-                }
-                hint="Approved recruiters can search candidates and send messages."
-              >
-                {pendingRecruiters.length === 0 ? (
-                  <EmptyState icon={UserCheck} title="All caught up" text="New recruiters will appear here." />
-                ) : (
-                  <ul className={ui.list}>
-                    {pendingRecruiters.map((user) => (
-                      <li key={user.id} className={ui.row}>
-                        <Avatar name={user.fullName || user.email} size={40} />
-                        <div className={ui.rowMain}>
-                          <span className={ui.rowTitle}>{user.fullName || user.email}</span>
-                          <span className={ui.rowText}>
-                            {user.email}, joined {formatDate(user.date_joined)}
-                          </span>
-                        </div>
-                        <VerificationBadge user={user} text={text} />
-                        <div className={ui.rowActions}>
-                          <button
-                            type="button"
-                            className="btn-outline btn-sm"
-                            onClick={() => handleVerify(user, "rejected")}
-                            disabled={busyUserId === user.id}
-                          >
-                            Reject
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-primary btn-sm"
-                            onClick={() => handleVerify(user, "approved")}
-                            disabled={busyUserId === user.id}
-                          >
-                            Approve
-                          </button>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Panel>
+            <OverviewSection
+              insights={insights}
+              stats={stats}
+              recentLogs={auditLogs.slice(0, RECENT_ACTIVITY_COUNT)}
+              text={text}
+              onReview={setReviewing}
+              onOpen={openSection}
+              onOpenUsers={openUsers}
+              formatDate={formatDate}
+            />
+          )}
 
-              {stats && <StatsSection stats={stats} text={text} />}
-
-              <AuditLogsSection
-                title="Recent admin actions"
-                auditLogs={auditLogs.slice(0, RECENT_ACTIVITY_COUNT)}
-                formatDate={formatDate}
-              />
-            </div>
+          {tab === "approvals" && (
+            <ApprovalsSection waiting={waiting} onReview={setReviewing} formatDate={formatDate} />
           )}
 
           {tab === "users" && (
@@ -384,10 +399,14 @@ export default function AdminPage() {
               totalCount={users.length}
               searchTerm={userSearch}
               setSearchTerm={setUserSearch}
+              filter={userFilter}
+              setFilter={setUserFilter}
+              filterCounts={filterCounts}
+              myId={me.id}
               busyUserId={busyUserId}
-              onToggleActive={handleToggleActive}
+              onAccountAction={handleAccountAction}
               onChangeRole={handleChangeRole}
-              onVerify={handleVerify}
+              onReview={setReviewing}
               formatDate={formatDate}
             />
           )}
@@ -410,7 +429,7 @@ export default function AdminPage() {
           )}
 
           {tab === "activity" && (
-            <AuditLogsSection title="Everything admins changed" auditLogs={auditLogs} formatDate={formatDate} />
+            <AuditLogsSection title={`${auditLogs.length} recorded actions`} auditLogs={auditLogs} formatDate={formatDate} />
           )}
 
           {tab === "texts" && (
@@ -428,6 +447,10 @@ export default function AdminPage() {
           )}
         </>
       )}
-    </Page>
+      {dialog}
+      {reviewing && (
+        <ApprovalReview user={reviewing} onClose={() => setReviewing(null)} onDecided={handleDecided} />
+      )}
+    </AdminShell>
   );
 }

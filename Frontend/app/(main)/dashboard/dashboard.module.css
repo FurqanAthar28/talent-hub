@@ -16,7 +16,7 @@
 
 .shell {
   max-width: 1128px;
-  margin: 88px auto 56px;
+  margin: calc(var(--topbar-height) + 28px) auto 56px;
   padding: 0 24px;
 }
 
@@ -29,10 +29,10 @@
 }
 
 .greeting {
-  font-size: 28px;
+  font-size: 30px;
   line-height: 1.2;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  font-weight: 750;
+  letter-spacing: -0.025em;
 }
 
 .subtitle {
@@ -70,7 +70,8 @@
 .panel {
   background: var(--card-color);
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
   padding: 24px;
 }
 
@@ -89,6 +90,7 @@
 
 .readiness {
   padding: 28px;
+  border-top: 3px solid var(--ink);
 }
 
 .readinessTitle {
@@ -193,7 +195,7 @@
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 20px 24px;
+  padding: 20px 22px;
   color: var(--text-primary);
   font-weight: 400;
 }
@@ -270,7 +272,7 @@ a.fact:hover {
   place-items: center;
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--bg-light);
   color: var(--primary-color);
 }
@@ -334,6 +336,7 @@ a.fact:hover {
 
 .search {
   padding: 28px;
+  border-top: 3px solid var(--ink);
 }
 
 .searchTitle {
@@ -424,6 +427,22 @@ a.fact:hover {
   font-size: 14px;
 }
 
+/* When the status card sits right above another card (candidate dashboard). */
+.statusAbove {
+  margin-bottom: 24px;
+}
+
+.statusActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.statusActions > * {
+  width: auto; /* globals.css stretches buttons on phones */
+}
+
 /* ---------- Loading placeholders ---------- */
 
 .placeholder {
@@ -469,6 +488,7 @@ a.fact:hover {
 
 @media (max-width: 640px) {
   .shell {
+    margin-top: calc(var(--topbar-height) + 20px);
     padding: 0 16px;
   }
 
@@ -479,6 +499,27 @@ a.fact:hover {
 
   .greeting {
     font-size: 24px;
+  }
+
+  .headerActions {
+    width: 100%;
+  }
+
+  .headerActions a {
+    flex: 1;
+    text-align: center;
+  }
+
+  .columns,
+  .stack {
+    gap: 16px;
+  }
+
+  .panel,
+  .readiness,
+  .search,
+  .status {
+    padding: 20px 16px;
   }
 
   /* Too narrow for a label under every piece: show just the bar. */
@@ -501,5 +542,23 @@ a.fact:hover {
 
   .searchForm {
     flex-direction: column;
+  }
+
+  .searchButton {
+    width: 100%;
+  }
+
+  .fact {
+    padding: 16px;
+  }
+
+  .linkRow {
+    gap: 12px;
+  }
+
+  .statusActions > *,
+  .missing a {
+    width: 100%;
+    justify-content: center;
   }
 }

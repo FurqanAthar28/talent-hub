@@ -76,7 +76,7 @@ function CandidatesSearch() {
           controller.signal
         );
 
-        setCandidates(results);
+        setCandidates(results.results);
         setError("");
       } catch (searchError) {
         // We cancelled it on purpose (a newer search started): not an error.

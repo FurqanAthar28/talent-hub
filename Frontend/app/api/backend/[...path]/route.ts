@@ -16,6 +16,27 @@ import { getBackendBaseUrl } from "../../backend-url";
 
 const API_BASE_URL = getBackendBaseUrl();
 
+// Give up on Django after this long, so a stuck server can't leave pages
+// "loading" forever. Can be changed with PROXY_TIMEOUT_MS in .env.local.
+const DEFAULT_TIMEOUT_MS = 30_000;
+const TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
+
+// Django's answer headers we pass back to the browser (everything else is dropped).
+//   content-type        -> JSON, PDF, ...
+//   content-disposition -> the file name for downloads ("ali-khan-cv.pdf")
+//   cache-control       -> whether the answer may be stored
+//   retry-after         -> "try again in N seconds" after too many tries (429)
+const FORWARDED_RESPONSE_HEADERS = ["content-type", "content-disposition", "cache-control", "retry-after"];
+
+/**
+ * Only plain address pieces like "profiles" or "42" may go to Django.
+ * Without this check, "/api/backend/..%2F..%2Fadmin" became Django's /admin/
+ * page: a way around "everything goes to /api/".
+ */
+function isSafeSegment(segment: string) {
+  return segment !== "" && segment !== "." && segment !== ".." && !/[/\\]/.test(segment);
+}
+
 // The browser headers Django needs to see. We copy ONLY these.
 //   content-type  -> what kind of body we send (JSON, a file upload, ...)
 //   cookie        -> the login cookies and the CSRF cookie
@@ -47,15 +68,14 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
     );
   }
 
-  // Step 1: work out the Django address.
-  // "media/..." files are served as-is. Everything else lives under "api/".
+  // Step 1: work out the Django address. Everything lives under "api/".
+  // (Files like CVs too: they come from /api/profiles/<id>/cv/.)
   const { path } = await context.params;
-  const isMediaRequest = path[0] === "media";
-  const upstreamPath = isMediaRequest
-    ? path.join("/")
-    : `api/${path.join("/")}/`;
+  if (!path.every(isSafeSegment)) {
+    return NextResponse.json({ message: "Not found" }, { status: 404 });
+  }
 
-  const upstreamUrl = new URL(`${API_BASE_URL}/${upstreamPath}`);
+  const upstreamUrl = new URL(`${API_BASE_URL}/api/${path.map(encodeURIComponent).join("/")}/`);
   upstreamUrl.search = request.nextUrl.search; // keep "?page=2" etc.
 
   // Step 2: copy the headers Django needs.
@@ -76,8 +96,16 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
       headers,
       body: hasBody ? await request.arrayBuffer() : undefined,
       cache: "no-store", // API answers change all the time; never cache them
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (error) {
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      console.error(`Backend proxy: Django took longer than ${TIMEOUT_MS} ms`);
+      return NextResponse.json(
+        { message: "The server is taking too long. Please try again." },
+        { status: 504 }
+      );
+    }
     console.error("Backend proxy request failed:", error);
     return NextResponse.json(
       { message: "Unable to connect to backend server" },
@@ -90,19 +118,18 @@ async function proxyRequest(request: NextRequest, context: RouteContext) {
   const content =
     upstream.status === 204 ? null : await upstream.arrayBuffer();
 
-  const response = new NextResponse(content, {
-    status: upstream.status,
-    headers: {
-      "content-type":
-        upstream.headers.get("content-type") ||
-        (isMediaRequest ? "application/octet-stream" : "application/json"),
-    },
-  });
-
-  // Keep the file name for downloads (for example "ali-khan-cv.pdf").
-  const contentDisposition = upstream.headers.get("content-disposition");
-  if (contentDisposition) {
-    response.headers.set("content-disposition", contentDisposition);
+  const response = new NextResponse(content, { status: upstream.status });
+  for (const name of FORWARDED_RESPONSE_HEADERS) {
+    const value = upstream.headers.get(name);
+    if (value) response.headers.set(name, value);
+  }
+  if (!response.headers.has("content-type")) {
+    response.headers.set("content-type", "application/json");
+  }
+  // Answers are private (your profile, your messages): never let a browser
+  // or a shared cache keep a copy, unless Django said otherwise.
+  if (!response.headers.has("cache-control")) {
+    response.headers.set("cache-control", "private, no-store");
   }
 
   // Step 5: pass on any cookies Django set (login tokens, CSRF token).

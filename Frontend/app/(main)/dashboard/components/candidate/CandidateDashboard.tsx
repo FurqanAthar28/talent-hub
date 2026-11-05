@@ -5,6 +5,7 @@ import type { Activity } from "@/app/services/dashboard";
 import type { Profile } from "@/app/services/profiles";
 import styles from "../../dashboard.module.css";
 import ActivityTimeline from "../common/ActivityTimeline";
+import ApprovalStatus from "../common/ApprovalStatus";
 import FactStrip from "../common/FactStrip";
 import ProfileReadiness from "../common/ProfileReadiness";
 import ShortcutList from "../common/ShortcutList";
@@ -22,6 +23,9 @@ type CandidateDashboardProps = {
 export default function CandidateDashboard({ profile, activities }: CandidateDashboardProps) {
   return (
     <>
+      {/* Waiting for approval / not approved (nothing once approved). */}
+      <ApprovalStatus profile={profile} className={styles.statusAbove} />
+
       <ProfileReadiness
         percent={profile.profileCompletion}
         checklist={profile.completionChecklist}

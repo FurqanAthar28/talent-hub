@@ -16,9 +16,10 @@ WHAT'S IN THIS FILE
 
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import transaction
-from django.db.models import Count, F
+from django.db.models import Count
 from django.db.models.functions import TruncDate
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -27,25 +28,28 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from accounts import account_state
+from accounts.account_state import within_grace_period
 from accounts.models import AdminActionLog
 from app_config.models import UiContent
 from config.db_helpers import count_related
 from connections.models import Connection, ConnectionRequest
-from connections.network import connect_users, disconnect_users, network_users, requests_between
-from connections.serializers import AdminConnectionSerializer
+from connections.network import connect_users, disconnect_users, network_connections, requests_between
+from profiles.approval import allowed_rejection_reasons, approval_checks, can_be_approved
 from profiles.models import Experience, Profile, Project, Skill
-from profiles.permissions import IsAppAdmin
+from profiles.permissions import IsAppAdmin, is_last_admin
 
 from .serializers import (
     AdminAuditLogSerializer,
+    AdminConnectionSerializer,
     AdminUiContentSerializer,
+    AccountActionSerializer,
     AdminUserSerializer,
+    ApprovalDecisionSerializer,
     ConnectUsersSerializer,
-    RecruiterVerificationSerializer,
     UiContentUpdateSerializer,
     UserPairSerializer,
     UserRoleSerializer,
-    UserStatusSerializer,
 )
 
 # How many audit log rows to show.
@@ -58,10 +62,15 @@ MY_RECENT_ACTIONS = 6
 
 # The short codes written in the audit log. One list, so the counting on the
 # admin's profile always matches what the buttons write.
+# Older log lines ("switch off / on") used these two codes.
 ACTION_USER_ACTIVATED = "user_activated"
 ACTION_USER_DEACTIVATED = "user_deactivated"
+# New: "account_suspend", "account_ban", "account_delete", ... (see ACCOUNT_ACTIONS)
+ACCOUNT_ACTION_CODES = [f"account_{name}" for name in ("suspend", "unsuspend", "ban", "unban", "delete", "restore")]
 ACTION_ROLE_CHANGED = "role_changed"
-ACTION_RECRUITER_VERIFICATION = "recruiter_verification_changed"
+ACTION_APPROVAL = "approval_changed"
+# Older log lines (before candidates needed approval too) used this code.
+ACTION_RECRUITER_VERIFICATION_OLD = "recruiter_verification_changed"
 ACTION_CONNECTION_CREATED = "connection_created"
 ACTION_CONNECTION_REMOVED = "connection_removed"
 ACTION_UI_CONTENT_UPDATED = "ui_content_updated"
@@ -121,6 +130,14 @@ def get_target_user(request, user_id):
     return user
 
 
+def refuse_if_last_admin(user):
+    """Stop the change if it would leave the app with no admin at all."""
+    if is_last_admin(user):
+        raise PermissionDenied(
+            f"{user.get_full_name() or user.email} is the only admin. Make someone else an admin first."
+        )
+
+
 # =============================================================================
 # 2. DASHBOARD NUMBERS
 # =============================================================================
@@ -132,23 +149,30 @@ def admin_stats_view(request):
     """The numbers at the top of the admin page and the admin dashboard."""
     users = User.objects.all()
     recruiters = Profile.objects.filter(role=Profile.ROLE_RECRUITER)
+    waiting = Profile.objects.filter(
+        role__in=[Profile.ROLE_CANDIDATE, Profile.ROLE_RECRUITER],
+        approval_status=Profile.APPROVAL_PENDING,
+        user__is_active=True,
+    )
 
     return Response(
         {
             "users": users.count(),
             "activeUsers": users.filter(is_active=True).count(),
             "inactiveUsers": users.filter(is_active=False).count(),
+            "suspendedUsers": Profile.objects.filter(account_status=Profile.ACCOUNT_SUSPENDED).count(),
+            "bannedUsers": Profile.objects.filter(account_status=Profile.ACCOUNT_BANNED).count(),
+            "deletedUsers": Profile.objects.filter(deleted_at__isnull=False).count(),
             "adminUsers": users.filter(profile__role=Profile.ROLE_ADMIN).count(),
             "candidates": Profile.objects.filter(role=Profile.ROLE_CANDIDATE).count(),
             "recruiters": recruiters.count(),
-            "pendingRecruiters": recruiters.filter(
-                recruiter_verification_status=Profile.RECRUITER_VERIFICATION_PENDING
-            ).count(),
+            # Everyone waiting for an admin's decision (candidates and recruiters).
+            "pendingApprovals": waiting.count(),
             "skills": Skill.objects.count(),
             "projects": Project.objects.count(),
             "experiences": Experience.objects.count(),
-            # Each friendship is saved as 2 rows (A->B and B->A), so divide by 2.
-            "connections": Connection.objects.count() // 2,
+            # Same rule as the Connections list, so the two always agree.
+            "connections": network_connections().count(),
             "pendingConnectionRequests": ConnectionRequest.objects.filter(
                 status=ConnectionRequest.STATUS_PENDING
             ).count(),
@@ -168,27 +192,88 @@ def admin_users_view(request):
     return Response(AdminUserSerializer(users, many=True).data)
 
 
-@api_view(["PATCH"])
+# What each account action needs first, and what it says afterwards.
+# (state_ok gets the profile and says if the action makes sense right now.)
+ACCOUNT_ACTIONS = {
+    "suspend": {
+        "state_ok": lambda p: p.account_status == Profile.ACCOUNT_ACTIVE and not p.deleted_at,
+        "not_now": "Only active accounts can be suspended.",
+        "done": "{name} is suspended and can't sign in.",
+        "log": "Suspended {email}: {reason}",
+    },
+    "unsuspend": {
+        "state_ok": lambda p: p.account_status == Profile.ACCOUNT_SUSPENDED,
+        "not_now": "This account isn't suspended.",
+        "done": "{name} can sign in again.",
+        "log": "Lifted the suspension of {email}",
+    },
+    "ban": {
+        "state_ok": lambda p: p.account_status != Profile.ACCOUNT_BANNED,
+        "not_now": "This account is already banned.",
+        "done": "{name} is banned. Their email can't sign up again.",
+        "log": "Banned {email}: {reason}",
+    },
+    "unban": {
+        "state_ok": lambda p: p.account_status == Profile.ACCOUNT_BANNED,
+        "not_now": "This account isn't banned.",
+        "done": "{name} is no longer banned.",
+        "log": "Lifted the ban of {email}",
+    },
+    "delete": {
+        "state_ok": lambda p: p.deleted_at is None,
+        "not_now": "This account is already deleted.",
+        "done": "{name} is deleted. You can restore it for {days} days.",
+        "log": "Deleted {email} (restorable): {reason}",
+    },
+    "restore": {
+        "state_ok": lambda p: within_grace_period(p),
+        "not_now": "This account can't be restored (it isn't deleted, or the time is up).",
+        "done": "{name} is restored.",
+        "log": "Restored {email}",
+    },
+}
+# Actions that take an admin away: never allowed on the last admin.
+REMOVING_ACTIONS = ("suspend", "ban", "delete")
+
+
+@api_view(["POST"])
 @permission_classes([IsAppAdmin])
-def admin_user_status_view(request, user_id):
-    """Switch an account on or off."""
-    serializer = UserStatusSerializer(data=request.data)
+def admin_account_action_view(request, user_id):
+    """Suspend, ban, delete (soft) or undo any of them. Always logged."""
+    serializer = AccountActionSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
+    action = serializer.validated_data["action"]
+    reason = serializer.validated_data["reason"]
 
-    user = get_target_user(request, user_id)
+    user = get_target_user(request, user_id)  # not yourself, not a superuser
+    if action in REMOVING_ACTIONS:
+        refuse_if_last_admin(user)
 
-    user.is_active = serializer.validated_data["is_active"]
-    user.save(update_fields=["is_active"])
+    profile, _created = Profile.objects.get_or_create(user=user)
+    rules = ACCOUNT_ACTIONS[action]
+    if not rules["state_ok"](profile):
+        return Response({"message": rules["not_now"]}, status=status.HTTP_400_BAD_REQUEST)
 
-    state = "Activated" if user.is_active else "Deactivated"
+    if action == "suspend":
+        account_state.suspend(user, reason)
+    elif action == "ban":
+        account_state.ban(user, reason, banned_by=request.user)
+    elif action in ("unsuspend", "unban"):
+        account_state.reactivate(user)
+    elif action == "delete":
+        account_state.soft_delete(user, by_admin=True, reason=reason)
+    else:
+        account_state.restore(user)
+
     log_action(
         request,
-        action=ACTION_USER_ACTIVATED if user.is_active else ACTION_USER_DEACTIVATED,
-        description=f"{state} {user.email}",
+        action=f"account_{action}",
+        description=rules["log"].format(email=user.email, reason=reason),
         target_user=user,
-        metadata={"is_active": user.is_active},
+        metadata={"action": action, "reason": reason},
     )
-    return user_response(user.pk, "User status updated successfully.")
+    name = user.get_full_name() or user.email
+    return user_response(user.pk, rules["done"].format(name=name, days=settings.ACCOUNT_DELETION_GRACE_DAYS))
 
 
 @api_view(["PATCH"])
@@ -203,6 +288,8 @@ def admin_user_role_view(request, user_id):
     new_role = serializer.validated_data["role"]
 
     user = get_target_user(request, user_id)
+    if new_role != Profile.ROLE_ADMIN:
+        refuse_if_last_admin(user)
 
     profile, _created = Profile.objects.get_or_create(user=user)
     old_role = profile.role
@@ -220,35 +307,89 @@ def admin_user_role_view(request, user_id):
     return user_response(user.pk, "User role updated successfully.")
 
 
+REJECTION_TEXT = dict(Profile.REJECTION_CHOICES)
+
+
+def approvable_profile(user_id):
+    """The profile of a candidate or recruiter (admins don't need approval)."""
+    user = get_object_or_404(User.objects.select_related("profile"), pk=user_id)
+    profile, _created = Profile.objects.get_or_create(user=user)
+    if profile.role not in (Profile.ROLE_CANDIDATE, Profile.ROLE_RECRUITER):
+        raise PermissionDenied("Only candidates and recruiters need approval.")
+    return user, profile
+
+
+@api_view(["GET"])
+@permission_classes([IsAppAdmin])
+def admin_approval_checks_view(request, user_id):
+    """What the admin sees before deciding: every check, and the allowed reasons."""
+    _user, profile = approvable_profile(user_id)
+    checks = approval_checks(profile)
+    return Response(
+        {
+            "checks": checks,
+            "canApprove": can_be_approved(checks),
+            "needsLinkedinCheck": profile.role == Profile.ROLE_CANDIDATE,
+            "rejectionReasons": [
+                {"value": reason, "label": REJECTION_TEXT[reason]} for reason in allowed_rejection_reasons(profile)
+            ],
+        }
+    )
+
+
 @api_view(["PATCH"])
 @permission_classes([IsAppAdmin])
-def admin_recruiter_verification_view(request, user_id):
-    """Approve or reject a recruiter (only approved recruiters can connect)."""
-    serializer = RecruiterVerificationSerializer(data=request.data)
+def admin_approval_view(request, user_id):
+    """
+    Approve a candidate or recruiter, or say "not approved" with one of the
+    two fixed reasons. Approving needs every REQUIRED check to pass.
+    """
+    serializer = ApprovalDecisionSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
-    new_status = serializer.validated_data["status"]
+    decision = serializer.validated_data
+    user, profile = approvable_profile(user_id)
 
-    user = get_object_or_404(User, pk=user_id)
-    profile, _created = Profile.objects.get_or_create(user=user)
-
-    if profile.role != Profile.ROLE_RECRUITER:
+    if decision["status"] == Profile.APPROVAL_APPROVED:
+        checks = approval_checks(profile)
+        failed = [item["label"] for item in checks if item["required"] and not item["passed"]]
+        if failed:
+            return Response(
+                {"message": "Can't approve yet: " + "; ".join(failed) + "."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if profile.role == Profile.ROLE_CANDIDATE and not decision["linkedinChecked"]:
+            return Response(
+                {"message": "Open their LinkedIn link and confirm it matches before approving."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    elif decision["reason"] not in allowed_rejection_reasons(profile):
         return Response(
-            {"message": "Only recruiters can be verified."},
+            {"message": "\"Company not verifiable\" only applies when they claim a company."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    profile.recruiter_verification_status = new_status
-    profile.recruiter_verification_note = serializer.validated_data.get("note", "")
-    profile.save(update_fields=["recruiter_verification_status", "recruiter_verification_note"])
+    profile.approval_status = decision["status"]
+    profile.rejection_reason = decision["reason"]
+    profile.save(update_fields=["approval_status", "rejection_reason"])
 
+    approved = decision["status"] == Profile.APPROVAL_APPROVED
     log_action(
         request,
-        action=ACTION_RECRUITER_VERIFICATION,
-        description=f"{'Approved' if new_status == Profile.RECRUITER_VERIFICATION_APPROVED else 'Rejected'} recruiter {user.email}",
+        action=ACTION_APPROVAL,
+        description=(
+            f"Approved {profile.role} {user.email}"
+            if approved
+            else f"Did not approve {profile.role} {user.email}: {REJECTION_TEXT[decision['reason']].lower()}"
+        ),
         target_user=user,
-        metadata={"status": new_status},
+        metadata={
+            "status": decision["status"],
+            "reason": decision["reason"],
+            "role": profile.role,
+            "linkedin_checked": decision["linkedinChecked"],
+        },
     )
-    return user_response(user.pk, "Recruiter verification updated.")
+    return user_response(user.pk, "Approved." if approved else "Marked as not approved.")
 
 
 # =============================================================================
@@ -259,16 +400,9 @@ def admin_recruiter_verification_view(request, user_id):
 @api_view(["GET"])
 @permission_classes([IsAppAdmin])
 def admin_connections_view(request):
-    """
-    Every connection, listed ONCE (A-B, not also B-A).
-    `user_id < connected_user_id` keeps just one of the two rows.
-    """
+    """Every connection, listed ONCE (A-B, not also B-A). Same rule as the stats."""
     connections = (
-        Connection.objects.filter(
-            user_id__lt=F("connected_user_id"),
-            user__in=network_users(),
-            connected_user__in=network_users(),
-        )
+        network_connections()
         .select_related("user", "user__profile", "connected_user", "connected_user__profile")
         .order_by("-created_at")
     )
@@ -284,21 +418,22 @@ def admin_connect_users_view(request):
     other = serializer.validated_data["connected_user"]
 
     with transaction.atomic():
-        connect_users(user, other)  # shared rule: saves both rows
+        created = connect_users(user, other)  # shared rule: saves both rows
         requests_between(user, other).delete()  # old requests aren't needed now
-
-    log_action(
-        request,
-        action=ACTION_CONNECTION_CREATED,
-        description=f"Connected {user.email} and {other.email}",
-        target_user=user,
-        metadata={"user_id": user.pk, "connected_user_id": other.pk},
-    )
+        if created:
+            log_action(
+                request,
+                action=ACTION_CONNECTION_CREATED,
+                description=f"Connected {user.email} and {other.email}",
+                target_user=user,
+                metadata={"user_id": user.pk, "connected_user_id": other.pk},
+            )
 
     connection = Connection.objects.select_related(
         "user", "user__profile", "connected_user", "connected_user__profile"
     ).get(user=user, connected_user=other)
-    return Response(AdminConnectionSerializer(connection).data, status=status.HTTP_201_CREATED)
+    status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    return Response(AdminConnectionSerializer(connection).data, status=status_code)
 
 
 @api_view(["POST"])
@@ -384,7 +519,7 @@ def current_streak(activity):
 def admin_me_view(request):
     """Numbers for the signed-in admin's own profile page."""
     mine = AdminActionLog.objects.filter(actor=request.user)
-    verifications = mine.filter(action=ACTION_RECRUITER_VERIFICATION)
+    verifications = mine.filter(action__in=[ACTION_APPROVAL, ACTION_RECRUITER_VERIFICATION_OLD])
     activity = daily_activity(mine, ACTIVITY_DAYS)
     recent = mine.select_related("actor", "target_user")[:MY_RECENT_ACTIONS]
 
@@ -394,15 +529,15 @@ def admin_me_view(request):
             "lastSignIn": request.user.last_login,
             "impact": {
                 "totalActions": mine.count(),
-                "recruitersApproved": verifications.filter(
-                    metadata__status=Profile.RECRUITER_VERIFICATION_APPROVED
+                "peopleApproved": verifications.filter(
+                    metadata__status=Profile.APPROVAL_APPROVED
                 ).count(),
-                "recruitersRejected": verifications.filter(
-                    metadata__status=Profile.RECRUITER_VERIFICATION_REJECTED
+                "peopleNotApproved": verifications.filter(
+                    metadata__status=Profile.APPROVAL_REJECTED
                 ).count(),
                 # Different people, not clicks: switching Ali off and on is 1.
                 "accountsManaged": mine.filter(
-                    action__in=[ACTION_USER_ACTIVATED, ACTION_USER_DEACTIVATED, ACTION_ROLE_CHANGED]
+                    action__in=[ACTION_USER_ACTIVATED, ACTION_USER_DEACTIVATED, ACTION_ROLE_CHANGED, *ACCOUNT_ACTION_CODES]
                 )
                 .values("target_user")
                 .distinct()

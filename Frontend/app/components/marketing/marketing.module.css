@@ -281,22 +281,34 @@
 }
 
 /* Left: logo, one sentence, the product preview. Hidden on small screens. */
+/* The dark ink panel: the same look as the admin's "needs your attention" card. */
 .authAside {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   gap: 40px;
+  margin: 12px 0 12px 12px;
   padding: 32px 48px;
-  background: var(--background-color);
-  border-right: 1px solid var(--border-color);
+  border-radius: 24px;
+  background:
+    radial-gradient(90% 70% at 100% 0%, rgba(124, 58, 237, 0.5), transparent 60%),
+    radial-gradient(70% 60% at 0% 100%, rgba(14, 159, 142, 0.18), transparent 60%),
+    var(--ink);
+  /* No text color here: the sample profile card inside keeps its normal dark text. */
+}
+
+/* The logo is purple on white everywhere else; on the ink it turns white. */
+.authAside > a {
+  color: #fff;
 }
 
 .authAsideText {
-  max-width: 30ch;
-  font-size: 28px;
-  line-height: 1.2;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+  max-width: 18ch;
+  color: #fff;
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: 750;
+  letter-spacing: -0.03em;
 }
 
 .authAsideMiddle {
@@ -306,8 +318,9 @@
 }
 
 .authAsideNote {
-  color: var(--text-secondary);
-  font-size: 13px;
+  max-width: 46ch;
+  color: var(--ink-text);
+  font-size: 14px;
 }
 
 /* Right: the form, centered, at a comfortable width. */
@@ -390,6 +403,21 @@
 }
 
 @media (max-width: 640px) {
+  .landingNav {
+    gap: 12px;
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .landingNavActions {
+    flex-shrink: 0;
+  }
+
+  .landingNavActions a {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
   .heroTitle {
     font-size: 32px;
   }

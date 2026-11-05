@@ -13,7 +13,7 @@ export default function BrandLogo({ href, size = "md" }: { href: string; size?: 
       <span className={styles.mark} aria-hidden="true">
         P
       </span>
-      <span>{APP_CONFIG.NAME}</span>
+      <span className={styles.name}>{APP_CONFIG.NAME}</span>
     </Link>
   );
 }

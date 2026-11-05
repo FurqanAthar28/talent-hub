@@ -26,6 +26,8 @@ from profiles.pdf_metadata import apply_cv_pdf_metadata
 from profiles.url_utils import normalize_url
 from profiles.validators import validate_cv_file
 
+from .account_state import is_email_banned
+
 
 # =============================================================================
 # 1. MESSAGES AND REUSABLE FIELDS
@@ -138,6 +140,9 @@ class SignupSerializer(serializers.Serializer):
     def validate_email(self, value):
         if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError(VALIDATION_MESSAGES["email_exists"])
+        # A banned email stays banned, even after its account is gone.
+        if is_email_banned(value):
+            raise serializers.ValidationError("This email can't be used to create an account.")
         return value
 
     def validate_cvFile(self, value):
@@ -202,12 +207,6 @@ class SignupSerializer(serializers.Serializer):
         if cv_file:
             cv_file = apply_cv_pdf_metadata(cv_file, full_name)
 
-        # Recruiters must be approved by an admin. Candidates don't.
-        if role == Profile.ROLE_RECRUITER:
-            verification_status = Profile.RECRUITER_VERIFICATION_PENDING
-        else:
-            verification_status = Profile.RECRUITER_VERIFICATION_APPROVED
-
         try:
             # atomic = save BOTH the user and the profile, or NEITHER.
             # We never want a user without a profile.
@@ -230,7 +229,8 @@ class SignupSerializer(serializers.Serializer):
                     company_website=validated_data.get("companyWebsite", ""),
                     company_location=validated_data.get("companyLocation", ""),
                     hiring_title=validated_data.get("hiringTitle", ""),
-                    recruiter_verification_status=verification_status,
+                    # Candidates AND recruiters wait for an admin's approval.
+                    approval_status=Profile.APPROVAL_PENDING,
                     cv_file=cv_file,
                 )
         except IntegrityError:

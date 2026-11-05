@@ -38,7 +38,7 @@ class ProfileTests(TestCase):
         user = User.objects.create_user(
             email, email, "S3cure-pass!", first_name="Test", last_name="User", is_active=active
         )
-        Profile.objects.create(user=user, role=role)
+        Profile.objects.create(user=user, role=role, approval_status=Profile.APPROVAL_APPROVED)
         return user
 
     def client_for(self, user):
@@ -122,9 +122,7 @@ class ProfileTests(TestCase):
         recruiter = self.make_user("rec@example.com", role=Profile.ROLE_RECRUITER)
         self.assertTrue(sees_cv(self.client_for(recruiter)))
         waiting = self.make_user("wait@example.com", role=Profile.ROLE_RECRUITER)
-        Profile.objects.filter(user=waiting).update(
-            recruiter_verification_status=Profile.RECRUITER_VERIFICATION_PENDING
-        )
+        Profile.objects.filter(user=waiting).update(approval_status=Profile.APPROVAL_PENDING)
         # Load the user fresh, like a real request does (the old object
         # still remembers its profile from before the update).
         self.assertFalse(sees_cv(self.client_for(User.objects.get(pk=waiting.pk))))
@@ -248,3 +246,14 @@ class ProfileTests(TestCase):
         )
         done = sum(1 for item in checklist if item["done"])
         self.assertEqual(data["profileCompletion"], round(done / len(checklist) * 100))
+
+
+class DuplicateSkillTests(TestCase):
+    def test_database_refuses_the_same_skill_in_another_case(self):
+        from django.db import IntegrityError, transaction
+
+        user = User.objects.create_user("ali@example.com", "ali@example.com", "S3cure-pass!")
+        profile = Profile.objects.create(user=user)
+        Skill.objects.create(profile=profile, name="React")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Skill.objects.create(profile=profile, name="react")

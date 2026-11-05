@@ -1,6 +1,11 @@
 import type { SectionProps } from "../formTypes";
+import { AiLabelRow, AiOptionList, type AiWriter } from "./ai/AiWriter";
 
-export default function AboutSection({ content, formData, handleChange }: SectionProps) {
+type Props = SectionProps & {
+  ai?: AiWriter; // only candidates have "Write with AI"
+};
+
+export default function AboutSection({ content, formData, handleChange, ai }: Props) {
   return (
     <section id="about" className="form-section">
       <div className="form-section-header">
@@ -10,7 +15,9 @@ export default function AboutSection({ content, formData, handleChange }: Sectio
       </div>
 
       <div className="form-group">
-        <label htmlFor="edit-bio">{content.bio || "Bio"}</label>
+        <AiLabelRow ai={ai} field="bio">
+          <label htmlFor="edit-bio">{content.bio || "Bio"}</label>
+        </AiLabelRow>
         <textarea
           id="edit-bio"
           name="bio"
@@ -20,6 +27,7 @@ export default function AboutSection({ content, formData, handleChange }: Sectio
           rows={6}
         />
         <p className="character-count">{formData.bio.length} characters</p>
+        <AiOptionList ai={ai} field="bio" currentValue={formData.bio} />
       </div>
     </section>
   );

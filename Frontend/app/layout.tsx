@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { APP_CONFIG } from "./config/app";
+import { ToastProvider } from "./components/ToastProvider";
+// The app's typeface (Manrope), served from our own site: no Google request, works offline.
+import "@fontsource-variable/manrope";
 import "./globals.css";
 
 /**
@@ -20,7 +23,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ToastProvider>{children}</ToastProvider>
+      </body>
     </html>
   );
 }

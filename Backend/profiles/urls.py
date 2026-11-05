@@ -18,6 +18,7 @@ urlpatterns = [
     # --- My profile ---
     path("me/", views.my_profile_view, name="my-profile"),
     path("me/update/", views.update_my_profile_view, name="update-my-profile"),
+    path("me/resubmit/", views.resubmit_for_approval_view, name="resubmit-for-approval"),
     path("activities/", views.activities_list_view, name="activities"),
     # --- My skills ---
     path("skills/", views.skills_list_view, name="skills"),

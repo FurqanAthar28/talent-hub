@@ -7,7 +7,7 @@ so "users/" below becomes "/api/connections/users/".
 
 from django.urls import path
 
-from . import admin_views, views
+from . import views
 
 app_name = "connections"
 
@@ -27,12 +27,5 @@ urlpatterns = [
         "conversations/<int:conversation_id>/messages/",
         views.conversation_messages_view,
         name="conversation-messages",
-    ),
-    # --- Admin only ---
-    path("admin/conversations/", admin_views.admin_conversations_view, name="admin-conversations"),
-    path(
-        "admin/conversations/<int:conversation_id>/",
-        admin_views.admin_conversation_detail_view,
-        name="admin-conversation-detail",
     ),
 ]

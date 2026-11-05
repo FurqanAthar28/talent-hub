@@ -15,8 +15,10 @@ from string import Formatter
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
+from accounts.account_state import restore_until
 from accounts.models import AdminActionLog
 from app_config.models import UiContent
+from connections.models import Connection
 from connections.network import is_network_user
 from profiles.models import Profile
 from profiles.permissions import role_of
@@ -47,8 +49,13 @@ class AdminUserSerializer(serializers.ModelSerializer):
     projectsCount = serializers.IntegerField(source="projects_count", read_only=True)
     experiencesCount = serializers.IntegerField(source="experiences_count", read_only=True)
     connectionsCount = serializers.IntegerField(source="connections_count", read_only=True)
-    recruiterVerificationStatus = serializers.SerializerMethodField()
-    recruiterVerificationNote = serializers.SerializerMethodField()
+    approvalStatus = serializers.SerializerMethodField()
+    rejectionReason = serializers.SerializerMethodField()
+    accountStatus = serializers.SerializerMethodField()
+    statusReason = serializers.SerializerMethodField()
+    deletedAt = serializers.SerializerMethodField()
+    deletedByAdmin = serializers.SerializerMethodField()
+    restoreUntil = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -67,8 +74,13 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "projectsCount",
             "experiencesCount",
             "connectionsCount",
-            "recruiterVerificationStatus",
-            "recruiterVerificationNote",
+            "approvalStatus",
+            "rejectionReason",
+            "accountStatus",
+            "statusReason",
+            "deletedAt",
+            "deletedByAdmin",
+            "restoreUntil",
         ]
 
     def get_profile(self, user):
@@ -93,13 +105,34 @@ class AdminUserSerializer(serializers.ModelSerializer):
         }
         return calculate_profile_completion(profile, counts)
 
-    def get_recruiterVerificationStatus(self, user):
+    def get_approvalStatus(self, user):
         profile = self.get_profile(user)
-        return profile.recruiter_verification_status if profile else Profile.RECRUITER_VERIFICATION_APPROVED
+        return profile.approval_status if profile else Profile.APPROVAL_PENDING
 
-    def get_recruiterVerificationNote(self, user):
+    def get_rejectionReason(self, user):
         profile = self.get_profile(user)
-        return profile.recruiter_verification_note if profile else ""
+        return profile.rejection_reason if profile else ""
+
+    def get_accountStatus(self, user):
+        profile = self.get_profile(user)
+        return profile.account_status if profile else Profile.ACCOUNT_ACTIVE
+
+    def get_statusReason(self, user):
+        profile = self.get_profile(user)
+        return profile.status_reason if profile else ""
+
+    def get_deletedAt(self, user):
+        profile = self.get_profile(user)
+        return profile.deleted_at if profile else None
+
+    def get_deletedByAdmin(self, user):
+        profile = self.get_profile(user)
+        return bool(profile and profile.deleted_by_admin)
+
+    def get_restoreUntil(self, user):
+        """Last day the account can still be restored (the admin page shows a countdown)."""
+        profile = self.get_profile(user)
+        return restore_until(profile) if profile else None
 
 
 class AdminAuditLogSerializer(serializers.ModelSerializer):
@@ -147,10 +180,22 @@ class AdminUiContentSerializer(serializers.ModelSerializer):
 # =============================================================================
 
 
-class UserStatusSerializer(serializers.Serializer):
-    # BooleanField understands true/false, "true"/"false", 1/0.
-    # Before, the text "false" was treated as True!
-    is_active = serializers.BooleanField()
+class AccountActionSerializer(serializers.Serializer):
+    """
+    What an admin does to an account. Suspend and ban need a reason
+    (the person sees it when they try to sign in).
+    """
+
+    ACTIONS_NEEDING_A_REASON = ("suspend", "ban", "delete")
+
+    action = serializers.ChoiceField(choices=["suspend", "unsuspend", "ban", "unban", "delete", "restore"])
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=255)
+
+    def validate(self, attrs):
+        attrs["reason"] = attrs.get("reason", "").strip()
+        if attrs["action"] in self.ACTIONS_NEEDING_A_REASON and not attrs["reason"]:
+            raise serializers.ValidationError("Please give a reason (the person will see it).")
+        return attrs
 
 
 class UserRoleSerializer(serializers.Serializer):
@@ -159,12 +204,25 @@ class UserRoleSerializer(serializers.Serializer):
     )
 
 
-class RecruiterVerificationSerializer(serializers.Serializer):
-    status = serializers.ChoiceField(
-        choices=[Profile.RECRUITER_VERIFICATION_APPROVED, Profile.RECRUITER_VERIFICATION_REJECTED]
+class ApprovalDecisionSerializer(serializers.Serializer):
+    """
+    Approve, or "not approved" with one of the two fixed reasons.
+    For candidates, approving also needs linkedinChecked=true: the admin
+    opened the LinkedIn link and it matches the name and headline.
+    """
+
+    status = serializers.ChoiceField(choices=[Profile.APPROVAL_APPROVED, Profile.APPROVAL_REJECTED])
+    reason = serializers.ChoiceField(
+        choices=[Profile.REJECTION_EMAIL, Profile.REJECTION_COMPANY], required=False, allow_blank=True
     )
-    # An optional private note, e.g. "Company website checked".
-    note = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    linkedinChecked = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, attrs):
+        if attrs["status"] == Profile.APPROVAL_REJECTED and not attrs.get("reason"):
+            raise serializers.ValidationError("Choose why: email not verifiable, or company not verifiable.")
+        if attrs["status"] == Profile.APPROVAL_APPROVED:
+            attrs["reason"] = ""
+        return attrs
 
 
 class UserPairSerializer(serializers.Serializer):
@@ -197,6 +255,45 @@ class ConnectUsersSerializer(UserPairSerializer):
                 "Only active candidates and approved recruiters can be connected."
             )
         return attrs
+
+
+class AdminConnectionSerializer(serializers.ModelSerializer):
+    userId = serializers.IntegerField(source="user.id", read_only=True)
+    userName = serializers.SerializerMethodField()
+    userEmail = serializers.EmailField(source="user.email", read_only=True)
+    userRole = serializers.SerializerMethodField()
+    connectedUserId = serializers.IntegerField(source="connected_user.id", read_only=True)
+    connectedUserName = serializers.SerializerMethodField()
+    connectedUserEmail = serializers.EmailField(source="connected_user.email", read_only=True)
+    connectedUserRole = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = Connection
+        fields = [
+            "id",
+            "userId",
+            "userName",
+            "userEmail",
+            "userRole",
+            "connectedUserId",
+            "connectedUserName",
+            "connectedUserEmail",
+            "connectedUserRole",
+            "createdAt",
+        ]
+
+    def get_userName(self, obj):
+        return display_name(obj.user)
+
+    def get_connectedUserName(self, obj):
+        return display_name(obj.connected_user)
+
+    def get_userRole(self, obj):
+        return role_of(obj.user)
+
+    def get_connectedUserRole(self, obj):
+        return role_of(obj.connected_user)
 
 
 # ----- UI content -----

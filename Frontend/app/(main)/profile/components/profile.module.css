@@ -6,6 +6,7 @@
 .header {
   padding: 0;
   overflow: hidden;
+  border-top: 3px solid var(--ink);
 }
 
 .identity {
@@ -21,7 +22,7 @@
 }
 
 .name {
-  font-size: 26px;
+  font-size: 30px;
   line-height: 1.2;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -30,7 +31,7 @@
 .headline {
   margin-top: 4px;
   font-size: 16px;
-  color: var(--text-primary);
+  color: var(--text-secondary);
 }
 
 .meta {
@@ -69,7 +70,7 @@
 }
 
 .stat {
-  padding: 16px 28px;
+  padding: 18px 28px;
 }
 
 .stat + .stat {
@@ -120,7 +121,7 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--bg-light);
   color: var(--text-secondary);
 }
@@ -156,7 +157,7 @@
 .tag {
   padding: 3px 10px;
   border-radius: 999px;
-  background: var(--bg-light);
+  background: var(--primary-light);
   border: 1px solid var(--border-color);
   font-size: 12px;
   font-weight: 600;
@@ -235,7 +236,7 @@ a.contactRow:hover {
 @media (max-width: 640px) {
   .identity {
     flex-direction: column;
-    padding: 20px;
+    padding: 20px 16px;
   }
 
   .name {
@@ -243,11 +244,33 @@ a.contactRow:hover {
   }
 
   .stat {
-    padding: 14px 16px;
+    padding: 14px 12px;
   }
 
   .statValue {
     font-size: 17px;
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .actions a,
+  .actions button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .stats {
+    grid-template-columns: repeat(var(--count), minmax(0, 1fr));
+  }
+
+  .statLabel {
+    font-size: 12px;
+  }
+
+  .stats {
+    overflow-wrap: anywhere;
   }
 }
 

@@ -1,5 +1,5 @@
 """
-Django settings for the Talent Hub backend.
+Django settings for the Professional Hub backend.
 
 HOW THIS FILE WORKS (read me first!)
 ------------------------------------
@@ -85,6 +85,7 @@ INSTALLED_APPS = [
     "app_config",
     "admin_panel",
     "recruiter",
+    "ai",
 ]
 
 # Middleware = checkpoints every request passes through, top to bottom.
@@ -103,6 +104,13 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "config.urls"
+
+# Where Django's built-in admin site lives. "admin/" on your laptop; on the
+# real website choose something hard to guess, e.g. "staff-7f3k2/".
+# Must end with "/" (and must not start with one).
+DJANGO_ADMIN_URL = str(config("DJANGO_ADMIN_URL", default="admin/"))
+if not DJANGO_ADMIN_URL.endswith("/") or DJANGO_ADMIN_URL.startswith("/"):
+    raise ImproperlyConfigured('DJANGO_ADMIN_URL must look like "something/" (ends with /, no / at the start).')
 WSGI_APPLICATION = "config.wsgi.application"
 
 TEMPLATES = [
@@ -143,7 +151,7 @@ DATABASES = {
         "OPTIONS": {
             # "prefer" = use encryption if the database supports it.
             # Online databases (like Render's) usually need "require".
-            "sslmode": config("DB_SSLMODE", default="prefer"),
+            "sslmode": config("DB_SSLMODE", default="require" if not DEBUG else "prefer"),
         },
     }
 }
@@ -243,6 +251,7 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "DEFAULT_RENDERER_CLASSES": api_renderers,
+    "DEFAULT_PAGINATION_CLASS": "config.pagination.StandardResultsPagination",
     # Every error gets a "message" field the frontend can show
     # (see config/exception_handler.py).
     "EXCEPTION_HANDLER": "config.exception_handler.api_exception_handler",
@@ -256,8 +265,17 @@ REST_FRAMEWORK = {
         "signup": config("SIGNUP_THROTTLE_RATE", default="30/hour"),
         # Wrong-password tries on "Delete my account", per logged-in user.
         "delete_account": "5/hour",
+        # Anti-spam, per logged-in user (see connections/throttles.py).
+        # Generous for real people, but stops scripts flooding everyone.
+        "connection_request": config("CONNECTION_REQUEST_THROTTLE_RATE", default="40/hour"),
+        "message": config("MESSAGE_THROTTLE_RATE", default="30/min"),
     },
 }
+
+
+# Lists use safe, small pages. The same limits are shared by all API clients.
+API_PAGE_SIZE = 20
+API_MAX_PAGE_SIZE = 100
 
 
 # =============================================================================
@@ -451,6 +469,33 @@ EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = config(
 EMAIL_VERIFICATION_MAX_ATTEMPTS = config(
     "EMAIL_VERIFICATION_MAX_ATTEMPTS", default=5, cast=int
 )
+
+
+# =============================================================================
+# 12b. DELETED ACCOUNTS
+# =============================================================================
+
+# A deleted account can be restored (by signing in) for this many days.
+# After that, `python manage.py purge_deleted_accounts` (run once a day)
+# deletes it for good.
+ACCOUNT_DELETION_GRACE_DAYS = config("ACCOUNT_DELETION_GRACE_DAYS", default=30, cast=int)
+# "Your account will be deleted in N days" emails, this many days before the end.
+ACCOUNT_DELETION_WARNING_DAYS = (7, 1)
+
+# The website people use (for links in emails). Defaults to the first
+# frontend address in CORS_ALLOWED_ORIGINS.
+FRONTEND_URL = str(config("FRONTEND_URL", default=CORS_ALLOWED_ORIGINS[0])).rstrip("/")
+
+
+# =============================================================================
+# 12c. AI FEATURES (see ai/provider.py)
+# =============================================================================
+
+# Without a key the app still works: the AI button says "AI is unavailable right now".
+ANTHROPIC_API_KEY = str(config("ANTHROPIC_API_KEY", default=""))
+AI_MODEL = str(config("AI_MODEL", default="claude-opus-5-5"))
+# How many times one candidate may call the AI per day (restarts at midnight UTC).
+AI_DAILY_LIMIT = config("AI_DAILY_LIMIT", default=10, cast=int)
 
 
 # =============================================================================

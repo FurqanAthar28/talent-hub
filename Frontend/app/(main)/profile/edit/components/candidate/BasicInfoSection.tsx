@@ -1,10 +1,12 @@
 import type { SectionProps } from "../formTypes";
+import { AiLabelRow, AiOptionList, type AiWriter } from "./ai/AiWriter";
 
 type Props = SectionProps & {
   showOpenToWork: boolean; // only candidates have "open to work"
+  ai?: AiWriter; // only candidates have "Write with AI"
 };
 
-export default function BasicInfoSection({ content, formData, handleChange, showOpenToWork }: Props) {
+export default function BasicInfoSection({ content, formData, handleChange, showOpenToWork, ai }: Props) {
   return (
     <section id="information" className="form-section">
       <div className="form-section-header">
@@ -31,7 +33,9 @@ export default function BasicInfoSection({ content, formData, handleChange, show
       </div>
 
       <div className="form-group">
-        <label htmlFor="edit-headline">{content.headline || "Professional headline"}</label>
+        <AiLabelRow ai={ai} field="headline">
+          <label htmlFor="edit-headline">{content.headline || "Professional headline"}</label>
+        </AiLabelRow>
         <input
           id="edit-headline"
           type="text"
@@ -40,6 +44,7 @@ export default function BasicInfoSection({ content, formData, handleChange, show
           onChange={handleChange}
           placeholder={content.headlinePlaceholder || "For example: Python developer"}
         />
+        <AiOptionList ai={ai} field="headline" currentValue={formData.headline} />
       </div>
 
       <div className="form-group">

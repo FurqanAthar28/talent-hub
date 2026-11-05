@@ -22,6 +22,7 @@ export const API_ROUTES = {
     ME: "/accounts/me/",
     CSRF: "/accounts/csrf/",
     DELETE_ACCOUNT: "/accounts/delete-account/",
+    RESTORE_ACCOUNT: "/accounts/restore/", // undo "Delete my account" within the grace period
     EMAIL_VERIFICATION_REQUEST: "/accounts/email-verification/request/",
     EMAIL_VERIFICATION_CONFIRM: "/accounts/email-verification/confirm/",
     PASSWORD_RESET_REQUEST: "/accounts/password-reset/request/",
@@ -36,6 +37,7 @@ export const API_ROUTES = {
     // --- My own profile ---
     ME: "/profiles/me/",
     UPDATE_ME: "/profiles/me/update/",
+    RESUBMIT: "/profiles/me/resubmit/", // "send my profile for review again"
     ACTIVITIES: "/profiles/activities/",
     SKILLS: "/profiles/skills/",
     SKILL_OPTIONS: "/profiles/skills/options/",
@@ -57,6 +59,7 @@ export const API_ROUTES = {
     USER_SKILLS: (userId: Id) => `/profiles/${userId}/skills/`,
     USER_PROJECTS: (userId: Id) => `/profiles/${userId}/projects/`,
     USER_EXPERIENCES: (userId: Id) => `/profiles/${userId}/experiences/`,
+    USER_CV: (userId: Id) => `/profiles/${userId}/cv/`,
     TRACK_VIEW: (userId: Id) => `/profiles/${userId}/view/`,
   },
 
@@ -80,14 +83,19 @@ export const API_ROUTES = {
     CANDIDATE: (userId: Id) => `/recruiter/candidates/${userId}/`,
   },
 
+  AI: {
+    HEADLINE_BIO: "/ai/headline-bio/", // answers with options; saves nothing
+  },
+
   ADMIN: {
     STATS: "/admin/stats/",
     ME: "/admin/me/", // the signed-in admin's own numbers (profile page)
     USERS: "/admin/users/",
-    USER_STATUS: (userId: Id) => `/admin/users/${userId}/status/`,
+    // Suspend, ban, delete or undo them: POST { action, reason }
+    ACCOUNT_ACTION: (userId: Id) => `/admin/users/${userId}/account/`,
     USER_ROLE: (userId: Id) => `/admin/users/${userId}/role/`,
-    RECRUITER_VERIFICATION: (userId: Id) =>
-      `/admin/users/${userId}/recruiter-verification/`,
+    APPROVAL: (userId: Id) => `/admin/users/${userId}/approval/`,
+    APPROVAL_CHECKS: (userId: Id) => `/admin/users/${userId}/approval-checks/`,
     CONNECTIONS: "/admin/connections/",
     CONNECT_USERS: "/admin/connect-users/",
     DISCONNECT_USERS: "/admin/disconnect-users/",
