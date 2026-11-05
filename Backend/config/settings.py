@@ -492,8 +492,10 @@ FRONTEND_URL = str(config("FRONTEND_URL", default=CORS_ALLOWED_ORIGINS[0])).rstr
 # =============================================================================
 
 # Without a key the app still works: the AI button says "AI is unavailable right now".
-ANTHROPIC_API_KEY = str(config("ANTHROPIC_API_KEY", default=""))
-AI_MODEL = str(config("AI_MODEL", default="claude-opus-5-5"))
+# Use OpenAI for headline and bio suggestions. Keys stay in environment files.
+OPENAI_API_KEY = str(config("OPENAI_API_KEY", default=""))
+AI_MODEL = str(config("OPENAI_MODEL", default="gpt-4o-mini"))
+OPENAI_TIMEOUT_SECONDS = config("OPENAI_TIMEOUT_SECONDS", default=20, cast=int)
 # How many times one candidate may call the AI per day (restarts at midnight UTC).
 AI_DAILY_LIMIT = config("AI_DAILY_LIMIT", default=10, cast=int)
 

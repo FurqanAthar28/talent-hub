@@ -130,6 +130,13 @@
   flex-shrink: 0;
 }
 
+.aiPrivacyNote {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: right;
+}
+
 .aiError {
   margin-top: 8px;
   color: var(--danger);

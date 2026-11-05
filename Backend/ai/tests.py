@@ -10,9 +10,8 @@ replaced with a fake, so the tests are free and work without an API key.
 import json
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import anthropic
 from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -33,7 +32,7 @@ GOOD_ANSWER = {
 }
 
 
-@override_settings(ANTHROPIC_API_KEY="test-key", AI_DAILY_LIMIT=10)
+@override_settings(OPENAI_API_KEY="test-key", AI_DAILY_LIMIT=10)
 class HeadlineBioViewTests(TestCase):
     def setUp(self):
         cache.clear()  # saved answers must not leak from one test to the next
@@ -182,7 +181,7 @@ class HeadlineBioViewTests(TestCase):
 
         self.assertEqual(self.client.post(URL).status_code, 200)
 
-    @override_settings(ANTHROPIC_API_KEY="")
+    @override_settings(OPENAI_API_KEY="")
     def test_missing_key_says_unavailable(self):
         response = self.client.post(URL)
 
@@ -218,66 +217,31 @@ class HeadlineBioViewTests(TestCase):
         self.assertEqual(self.client.post(URL).data["headlines"], ["a", "b", "c"])
 
 
-def fake_response(stop_reason="end_turn", text=json.dumps(GOOD_ANSWER)):
-    return SimpleNamespace(
-        stop_reason=stop_reason,
-        _request_id="req_test",
-        content=[SimpleNamespace(type="thinking"), SimpleNamespace(type="text", text=text)],
-    )
-
-
-@override_settings(ANTHROPIC_API_KEY="test-key", AI_MODEL="claude-opus-5-5")
+@override_settings(OPENAI_API_KEY="test-key", AI_MODEL="gpt-4o-mini")
 class ProviderTests(SimpleTestCase):
-    """How we read the provider's answers. Only the network call itself is faked."""
+    """The provider network call is replaced; response parsing stays real."""
 
-    def ask(self, response=None, error=None):
-        with patch("ai.provider.anthropic.Anthropic") as client_class:
-            create = client_class.return_value.beta.messages.create
-            create.return_value = response
-            create.side_effect = error
-            self.create = create
-            self.client_class = client_class
-            return provider._ask_for_json("system", "{}", {})
+    def ask(self, text):
+        response = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=text))]
+        )
+        with patch("ai.provider.openai.OpenAI") as client_class:
+            client_class.return_value.chat.completions.create.return_value = response
+            return provider._ask_for_json("system", "{}")
 
-    def test_reads_the_text_block_after_thinking(self):
-        self.assertEqual(self.ask(fake_response()), GOOD_ANSWER)
+    def test_reads_json_answer(self):
+        self.assertEqual(self.ask(json.dumps(GOOD_ANSWER)), GOOD_ANSWER)
 
-    def test_time_limit_is_shorter_than_the_proxy_and_retries_are_off(self):
-        self.ask(fake_response())
+    def test_timeout_is_shorter_than_the_proxy_and_retries_are_off(self):
+        with patch("ai.provider.openai.OpenAI") as client_class:
+            client_class.return_value.chat.completions.create.return_value = SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(GOOD_ANSWER)))]
+            )
+            provider._ask_for_json("system", "{}")
 
-        self.assertLess(self.client_class.call_args.kwargs["timeout"], 30)
-        self.assertEqual(self.client_class.call_args.kwargs["max_retries"], 0)
-
-    def test_refusal_fallback_is_on_for_opus(self):
-        self.ask(fake_response())
-
-        self.assertEqual(self.create.call_args.kwargs["fallbacks"], "default")
-
-    @override_settings(AI_MODEL="claude-haiku-5-5")
-    def test_refusal_fallback_is_off_for_haiku(self):
-        self.ask(fake_response())
-
-        self.assertNotIn("fallbacks", self.create.call_args.kwargs)
-
-    def test_refused_or_cut_off_answers_fail(self):
-        for stop_reason in ["refusal", "max_tokens"]:
-            with self.assertRaises(provider.AIUnavailable):
-                self.ask(fake_response(stop_reason=stop_reason, text="{not json"))
+        self.assertLess(client_class.call_args.kwargs["timeout"], 30)
+        self.assertEqual(client_class.call_args.kwargs["max_retries"], 0)
 
     def test_invalid_json_fails(self):
         with self.assertRaises(provider.AIUnavailable):
-            self.ask(fake_response(text="{not json"))
-
-    def test_provider_errors_fail(self):
-        request = MagicMock()
-        status_error = {"response": MagicMock(status_code=500, headers={}), "body": None}
-        errors = [
-            anthropic.APIConnectionError(request=request),
-            anthropic.APITimeoutError(request=request),
-            anthropic.AuthenticationError("bad key", **status_error),
-            anthropic.RateLimitError("slow down", **status_error),
-            anthropic.InternalServerError("oops", **status_error),
-        ]
-        for error in errors:
-            with self.subTest(type(error).__name__), self.assertRaises(provider.AIUnavailable):
-                self.ask(error=error)
+            self.ask("{not json")

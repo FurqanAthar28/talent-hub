@@ -72,7 +72,7 @@ so they never touch your real PostgreSQL data. Only the last line matters:
 
 All AI code lives in the `ai` app, and only `ai/provider.py` talks to the AI provider.
 
-- Set `ANTHROPIC_API_KEY` in `.env`. Without it the app still works, and the AI button says "AI is unavailable right now".
+- Set `OPENAI_API_KEY` in `.env`. Without it the app still works, and the AI button says "AI is unavailable right now".
 - `AI_MODEL` picks the model and `AI_DAILY_LIMIT` sets the uses per candidate per day (default 10).
 - `python manage.py test ai` never calls the real AI, so it's free and needs no key.
 
@@ -93,4 +93,3 @@ gunicorn config.wsgi:application
 - `collectstatic` gathers CSS/JS (like the Django admin styles). WhiteNoise serves them.
 - Set `DJANGO_DEBUG=False` and all other values from `.env.example` in Render's environment settings.
 - **Uploaded CVs need a persistent disk or cloud storage.** Render wipes the normal disk on every deploy.
-

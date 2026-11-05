@@ -83,6 +83,7 @@ export function AiLabelRow({ ai, field, children }: RowProps) {
       >
         {ai.loading ? "Writing..." : "Write with AI"}
       </button>
+      <span className={styles.aiPrivacyNote}>Suggestions use OpenAI and your profile facts.</span>
     </div>
   );
 }
