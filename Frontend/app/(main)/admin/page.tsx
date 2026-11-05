@@ -1,511 +1,433 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+/**
+ * Admin page, in 5 tabs:
+ *   Overview     -> numbers, recruiters waiting for approval, recent admin actions
+ *   Users        -> every account: role, switch on/off, approve recruiters
+ *   Connections  -> connect two people by hand, or remove a connection
+ *   Activity log -> everything admins changed
+ *   Page texts   -> edit the app's wording without code
+ *
+ * AFTER EACH ACTION
+ * We update the changed item from Django's answer, then quietly refresh only
+ * the numbers and the activity log. (Before, every click reloaded ALL the
+ * data and replaced the page with "Loading", losing your place and search.)
+ *
+ * SAFETY
+ * Switching an account off, and changing a role, ask "Are you sure?" first.
+ */
 
-import { apiFetch } from "../../api/client";
-import {
-  fetchUiContent,
-  getUiContentErrorMessage,
-  type UiContent,
-} from "../../api/ui-content";
-import StatsSection from "./components/StatsSection";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { UserCheck } from "lucide-react";
+
+import { errorText } from "../../api/client";
+import { clearUiContentCache } from "../../api/ui-content";
+import { Avatar, EmptyState, Notice, Page, Panel, Tabs, ui } from "../../components/ui";
+import { ROUTES } from "../../config/routes";
+import { useUiContent } from "../../hooks/useUiContent";
+import * as adminApi from "../../services/admin";
+import { isAdmin, useCurrentUser } from "../CurrentUserContext";
+import styles from "./admin.module.css";
 import AuditLogsSection from "./components/AuditLogsSection";
 import ConnectionsSection from "./components/ConnectionsSection";
+import StatsSection from "./components/StatsSection";
 import UiContentSection from "./components/UiContentSection";
-import UsersSection from "./components/UsersSection";
-import { API_ROUTES } from "../../config/apiRoutes";
-import type {
-  AdminStats,
-  AdminUser,
-  AdminConnection,
-  AdminAuditLog,
-  AdminUiContentItem,
-  AuthUser,
-} from "./types";
+import UsersSection, { VerificationBadge } from "./components/UsersSection";
+import type { AdminAuditLog, AdminConnection, AdminStats, AdminUiContentItem, AdminUser } from "./types";
 
+const TABS = ["overview", "users", "connections", "activity", "texts"] as const;
+type Tab = (typeof TABS)[number];
+
+/** The tab named in the address (/admin?tab=users), so other pages can link straight to it. */
+function tabFromAddress(): Tab | null {
+  const wanted = new URLSearchParams(window.location.search).get("tab");
+  return TABS.find((tab) => tab === wanted) ?? null;
+}
+type Message = { tone: "success" | "error"; text: string } | null;
+
+// How many recent actions the Overview shows.
+const RECENT_ACTIVITY_COUNT = 5;
+// Django accepts notes up to this length.
+const MAX_NOTE_LENGTH = 255;
 
 function formatDate(value: string | null) {
   if (!value) return "";
-
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
 }
 
-function getRecruiterVerificationLabel(user: AdminUser, uiContent: UiContent) {
-  if (user.role !== "recruiter") return "-";
-
-  if (user.recruiterVerificationStatus === "pending") {
-    return uiContent.adminRecruiterPending || "Pending";
-  }
-
-  if (user.recruiterVerificationStatus === "approved") {
-    return uiContent.adminRecruiterApproved || "Approved";
-  }
-
-  if (user.recruiterVerificationStatus === "rejected") {
-    return uiContent.adminRecruiterRejected || "Rejected";
-  }
-
-  return "-";
+/** Does this text contain the search words? (case doesn't matter) */
+function matches(search: string, ...values: string[]) {
+  const query = search.trim().toLowerCase();
+  return !query || values.join(" ").toLowerCase().includes(query);
 }
+
 export default function AdminPage() {
-  const [uiContent, setUiContent] = useState<UiContent>({});
+  const router = useRouter();
+  const text = useUiContent();
+  const me = useCurrentUser();
+
+  const [tab, setTab] = useState<Tab>("overview");
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState<Message>(null);
+
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [notice, setNotice] = useState<string | undefined>("");
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState<number | null>(null);
-  const [roleLoading, setRoleLoading] = useState<number | null>(null);
-  const [verificationLoading, setVerificationLoading] = useState<number | null>(
-    null
-  );
   const [connections, setConnections] = useState<AdminConnection[]>([]);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
-  const [adminUiContentItems, setAdminUiContentItems] = useState<
-    AdminUiContentItem[]
-  >([]);
-  const [uiContentSearchTerm, setUiContentSearchTerm] = useState("");
-  const [uiContentDraftValues, setUiContentDraftValues] = useState<
-    Record<string, string>
-  >({});
-  const [uiContentSavingKey, setUiContentSavingKey] = useState<string | null>(
-    null
-  );
+  const [texts, setTexts] = useState<AdminUiContentItem[]>([]);
+
+  const [userSearch, setUserSearch] = useState("");
+  const [textSearch, setTextSearch] = useState("");
+  const [textDrafts, setTextDrafts] = useState<Record<string, string>>({});
   const [firstUserId, setFirstUserId] = useState("");
   const [secondUserId, setSecondUserId] = useState("");
-  const [connectionSaving, setConnectionSaving] = useState(false);
-  const [disconnectLoading, setDisconnectLoading] = useState<number | null>(
-    null
-  );
-  const [canViewAdmin, setCanViewAdmin] = useState(false);
 
-  const loadAdminData = useCallback(
-    async (clearNotice = true) => {
-      setLoading(true);
-      if (clearNotice) setNotice("");
+  // What is running right now (so only that button says "Saving...").
+  const [busyUserId, setBusyUserId] = useState<number | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [removingId, setRemovingId] = useState<number | null>(null);
+  const [savingTextKey, setSavingTextKey] = useState<string | null>(null);
 
-      try {
-        const uiContentData = await fetchUiContent();
-        setUiContent(uiContentData);
+  const canView = isAdmin(me);
 
-        const meRes = await apiFetch(API_ROUTES.ACCOUNTS.ME);
-
-        if (!meRes.ok) {
-          setCanViewAdmin(false);
-          setNotice(uiContentData.adminAccessDenied || "You do not have access to the admin area.");
-          return;
-        }
-
-        const currentUser = (await meRes.json()) as AuthUser;
-
-        if (!currentUser.isStaff) {
-          setCanViewAdmin(false);
-          setNotice(uiContentData.adminAccessDenied || "You do not have access to the admin area.");
-          return;
-        }
-
-        setCanViewAdmin(true);
-
-        const [
-          statsRes,
-          usersRes,
-          connectionsRes,
-          auditLogsRes,
-          adminUiContentRes,
-        ] =
-  await Promise.all([
-    apiFetch("/admin/stats/"),
-    apiFetch("/admin/users/"),
-    apiFetch("/admin/connections/"),
-    apiFetch("/admin/audit-logs/"),
-    apiFetch("/admin/ui-content/"),
-  ]);
-
-        if (
-          !statsRes.ok ||
-          !usersRes.ok ||
-          !connectionsRes.ok ||
-          !auditLogsRes.ok ||
-          !adminUiContentRes.ok
-        ) {
-          setNotice(uiContentData.adminUnableToLoad || "Unable to load admin dashboard.");
-          return;
-        }
-
-        setStats(await statsRes.json());
-        setUsers(await usersRes.json());
-        setConnections(await connectionsRes.json());
-        setAuditLogs(await auditLogsRes.json());
-        setAdminUiContentItems(await adminUiContentRes.json());
-      } catch (error) {
-        console.error("Failed to load admin data:", error);
-        setCanViewAdmin(false);
-        setNotice(getUiContentErrorMessage(error));
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
-
+  // First load: everything at once.
   useEffect(() => {
-    async function loadInitialAdminData() {
-      await loadAdminData();
+    if (!canView) {
+      router.replace(ROUTES.DASHBOARD); // not an admin: go to your own dashboard
+      return;
     }
 
-    loadInitialAdminData();
-  }, [loadAdminData]);
+    let pageIsOpen = true;
 
-  const filteredUsers = useMemo(() => {
-    const normalizedSearchTerm = searchTerm.trim().toLowerCase();
-
-    if (!normalizedSearchTerm) return users;
-
-    return users.filter((user) => {
-      return (
-        user.fullName.toLowerCase().includes(normalizedSearchTerm) ||
-        user.email.toLowerCase().includes(normalizedSearchTerm)
-      );
-    });
-  }, [searchTerm, users]);
-
-  const networkUsers = useMemo(() => {
-    return users.filter((user) => {
-      return (
-        user.is_active &&
-        !user.is_staff &&
-        (user.role === "candidate" ||
-          (user.role === "recruiter" &&
-            user.recruiterVerificationStatus === "approved"))
-      );
-    });
-  }, [users]);
-
-  const filteredUiContentItems = useMemo(() => {
-    const normalizedSearchTerm = uiContentSearchTerm.trim().toLowerCase();
-
-    if (!normalizedSearchTerm) return adminUiContentItems;
-
-    return adminUiContentItems.filter((item) => {
-      return (
-        item.key.toLowerCase().includes(normalizedSearchTerm) ||
-        item.value.toLowerCase().includes(normalizedSearchTerm)
-      );
-    });
-  }, [adminUiContentItems, uiContentSearchTerm]);
-
-  async function updateUserStatus(user: AdminUser) {
-    setActionLoading(user.id);
-    setNotice("");
-
-    try {
-      const res = await apiFetch(`${uiContent.apiAdminUsers}/${user.id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_active: !user.is_active }),
+    Promise.all([
+      adminApi.getStats(),
+      adminApi.getUsers(),
+      adminApi.getConnections(),
+      adminApi.getAuditLogs(),
+      adminApi.getUiContentItems(),
+    ])
+      .then(([newStats, newUsers, newConnections, newLogs, newTexts]) => {
+        if (!pageIsOpen) return;
+        // Open the tab named in the address (?tab=users), if any.
+        setTab((current) => tabFromAddress() ?? current);
+        setStats(newStats);
+        setUsers(newUsers);
+        setConnections(newConnections);
+        setAuditLogs(newLogs);
+        setTexts(newTexts);
+      })
+      .catch((error: unknown) => {
+        if (pageIsOpen) setMessage({ tone: "error", text: errorText(error, "Couldn't load the admin data.") });
+      })
+      .finally(() => {
+        if (pageIsOpen) setLoading(false);
       });
-      const data = await res.json();
 
-      if (!res.ok) {
-        setNotice(data.message);
-        return;
-      }
+    return () => {
+      pageIsOpen = false;
+    };
+  }, [canView, router]);
 
-      setUsers((previousUsers) =>
-        previousUsers.map((currentUser) =>
-          currentUser.id === user.id ? data : currentUser
-        )
-      );
-
-      setNotice(data.message || uiContent.adminUserStatusUpdated);
-      await loadAdminData(false);
+  /** After an action: refresh the numbers and the log, quietly. */
+  const refreshSummary = useCallback(async () => {
+    try {
+      const [newStats, newLogs] = await Promise.all([adminApi.getStats(), adminApi.getAuditLogs()]);
+      setStats(newStats);
+      setAuditLogs(newLogs);
     } catch (error) {
-      console.error("Failed to update user status:", error);
-      setNotice(uiContent.adminUnableToLoad);
+      console.warn("Couldn't refresh the admin numbers:", error);
+    }
+  }, []);
+
+  /** Put Django's updated user into the list. */
+  function replaceUser(updated: AdminUser) {
+    setUsers((list) => list.map((user) => (user.id === updated.id ? updated : user)));
+  }
+
+  /** Run one user action: one at a time, with a clear success or error message. */
+  async function runUserAction(user: AdminUser, work: () => Promise<AdminUser & { message?: string }>, done: string) {
+    if (busyUserId !== null) return;
+    setBusyUserId(user.id);
+    setMessage(null);
+
+    try {
+      const updated = await work();
+      replaceUser(updated);
+      setMessage({ tone: "success", text: updated.message || done });
+      void refreshSummary();
+    } catch (error) {
+      setMessage({ tone: "error", text: errorText(error, "That didn't work. Please try again.") });
     } finally {
-      setActionLoading(null);
+      setBusyUserId(null);
     }
   }
 
-  async function updateUserRole(user: AdminUser, role: AdminUser["role"]) {
-    if (role === user.role) {
-      setNotice(uiContent.adminNoChangeRequired);
-      return;
-    }
+  function handleToggleActive(user: AdminUser) {
+    const name = user.fullName || user.email;
+    if (user.is_active && !window.confirm(`Switch off ${name}'s account? They won't be able to sign in.`)) return;
 
-    setRoleLoading(user.id);
-    setNotice("");
-
-    try {
-      const res = await apiFetch(
-        `${uiContent.apiAdminUsers}/${user.id}/${uiContent.apiAdminUserRoleSuffix}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ role }),
-        }
-      );
-      const data = await res.json();
-
-      if (!res.ok) {
-        setNotice(data.message);
-        return;
-      }
-
-      setUsers((previousUsers) =>
-        previousUsers.map((currentUser) =>
-          currentUser.id === user.id ? data : currentUser
-        )
-      );
-
-      setNotice(data.message || uiContent.adminUserRoleUpdated);
-      await loadAdminData(false);
-    } catch (error) {
-      console.error("Failed to update user role:", error);
-      setNotice(uiContent.adminUnableToLoad);
-    } finally {
-      setRoleLoading(null);
-    }
+    void runUserAction(
+      user,
+      () => adminApi.setUserActive(user.id, !user.is_active),
+      user.is_active ? `${name} was switched off.` : `${name} was switched on.`
+    );
   }
 
-  async function updateRecruiterVerification(
-    user: AdminUser,
-    status: "approved" | "rejected"
-  ) {
-    if (status === user.recruiterVerificationStatus) {
-      setNotice(uiContent.adminNoChangeRequired);
-      return;
-    }
+  function handleChangeRole(user: AdminUser, role: AdminUser["role"]) {
+    if (role === user.role) return;
 
-    setVerificationLoading(user.id);
-    setNotice("");
+    const name = user.fullName || user.email;
+    const warning = role === "admin" ? " Admins can see and change everything." : "";
+    if (!window.confirm(`Make ${name} a ${role}?${warning}`)) return;
 
-    try {
-      const res = await apiFetch(
-        `${uiContent.apiAdminUsers}/${user.id}/${uiContent.apiAdminRecruiterVerificationSuffix}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status }),
-        }
-      );
-      const data = await res.json();
-
-      if (!res.ok) {
-        setNotice(data.message || uiContent.adminRecruiterVerificationInvalidRole);
-        return;
-      }
-
-      setUsers((previousUsers) =>
-        previousUsers.map((currentUser) =>
-          currentUser.id === user.id ? data : currentUser
-        )
-      );
-      setNotice(uiContent.adminRecruiterVerificationUpdated);
-      await loadAdminData(false);
-    } catch (error) {
-      console.error("Failed to update recruiter verification:", error);
-      setNotice(uiContent.adminUnableToLoad);
-    } finally {
-      setVerificationLoading(null);
-    }
+    void runUserAction(user, () => adminApi.setUserRole(user.id, role), `${name} is now a ${role}.`);
   }
 
-  async function createManagedConnection() {
-    setNotice("");
+  function handleVerify(user: AdminUser, status: "approved" | "rejected") {
+    const name = user.fullName || user.email;
+    let note = "";
 
-    if (!firstUserId || !secondUserId || firstUserId === secondUserId) {
-      setNotice(uiContent.adminInvalidConnectionUsers);
-      return;
+    if (status === "rejected") {
+      // The recruiter sees this note on their dashboard, so they know what to fix.
+      const answer = window.prompt(`Why is ${name} not approved? They will see this note.`, "");
+      if (answer === null) return; // Cancel pressed
+      note = answer.trim().slice(0, MAX_NOTE_LENGTH);
     }
 
-    setConnectionSaving(true);
+    void runUserAction(
+      user,
+      () => adminApi.setRecruiterVerification(user.id, status, note),
+      status === "approved" ? `${name} is approved.` : `${name} was not approved.`
+    );
+  }
+
+  async function handleConnect() {
+    if (connecting) return;
+    setConnecting(true);
+    setMessage(null);
 
     try {
-      const res = await apiFetch("/admin/connect-users/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: Number(firstUserId),
-          connectedUserId: Number(secondUserId),
-        }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setNotice(data.message || uiContent.adminInvalidConnectionUsers);
-        return;
-      }
-
-      setNotice(uiContent.adminConnectionCreated);
+      const created = await adminApi.connectUsers(Number(firstUserId), Number(secondUserId));
+      setConnections((list) => [created, ...list]);
       setFirstUserId("");
       setSecondUserId("");
-      await loadAdminData(false);
+      setMessage({ tone: "success", text: text("adminConnectionCreated", "The two people are now connected.") });
+      void refreshSummary();
     } catch (error) {
-      console.error("Failed to create managed connection:", error);
-      setNotice(uiContent.adminUnableToLoad);
+      setMessage({ tone: "error", text: errorText(error, "Couldn't connect them.") });
     } finally {
-      setConnectionSaving(false);
+      setConnecting(false);
     }
   }
 
-  async function disconnectManagedConnection(connection: AdminConnection) {
-    setNotice("");
-    setDisconnectLoading(connection.id);
+  async function handleDisconnect(connection: AdminConnection) {
+    if (removingId !== null) return;
+    if (!window.confirm(`Remove the connection between ${connection.userName} and ${connection.connectedUserName}?`)) return;
+
+    setRemovingId(connection.id);
+    setMessage(null);
 
     try {
-      const res = await apiFetch("/admin/disconnect-users/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: connection.userId,
-          connectedUserId: connection.connectedUserId,
-        }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setNotice(data.message || uiContent.adminUnableToLoad);
-        return;
-      }
-
-      setNotice(uiContent.adminConnectionRemoved);
-      await loadAdminData(false);
+      await adminApi.disconnectUsers(connection.userId, connection.connectedUserId);
+      setConnections((list) => list.filter((item) => item.id !== connection.id));
+      setMessage({ tone: "success", text: text("adminConnectionRemoved", "Connection removed.") });
+      void refreshSummary();
     } catch (error) {
-      console.error("Failed to disconnect managed connection:", error);
-      setNotice(uiContent.adminUnableToLoad);
+      setMessage({ tone: "error", text: errorText(error, "Couldn't remove the connection.") });
     } finally {
-      setDisconnectLoading(null);
+      setRemovingId(null);
     }
   }
 
-  async function saveUiContent(item: AdminUiContentItem) {
-    const value = uiContentDraftValues[item.key] ?? item.value;
-
-    setNotice("");
-    setUiContentSavingKey(item.key);
+  async function handleSaveText(item: AdminUiContentItem) {
+    const value = textDrafts[item.key] ?? item.value;
+    setSavingTextKey(item.key);
+    setMessage(null);
 
     try {
-      const res = await apiFetch(`/admin/ui-content/${item.key}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value }),
+      const saved = await adminApi.updateUiContentItem(item.key, value);
+      setTexts((list) => list.map((current) => (current.key === item.key ? { ...current, value: saved.value } : current)));
+      setTextDrafts((drafts) => {
+        const next = { ...drafts };
+        delete next[item.key];
+        return next;
       });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setNotice(data.message || uiContent.adminUnableToLoad);
-        return;
-      }
-
-      setAdminUiContentItems((previousItems) =>
-        previousItems.map((currentItem) =>
-          currentItem.key === item.key ? data : currentItem
-        )
-      );
-      setUiContent((previousContent) => ({
-        ...previousContent,
-        [data.key]: data.value,
-      }));
-      setUiContentDraftValues((previousValues) => {
-        const nextValues = { ...previousValues };
-        delete nextValues[item.key];
-        return nextValues;
-      });
-      setNotice(data.message || uiContent.adminUiContentUpdated || "UI content updated.");
+      clearUiContentCache(); // other pages load the new wording
+      setMessage({ tone: "success", text: `Saved "${item.key}".` });
+      void refreshSummary();
     } catch (error) {
-      console.error("Failed to update UI content:", error);
-      setNotice(uiContent.adminUnableToLoad);
+      setMessage({ tone: "error", text: errorText(error, "Couldn't save this text.") });
     } finally {
-      setUiContentSavingKey(null);
+      setSavingTextKey(null);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="app-main">
-        <div className="container">{uiContent.loading}</div>
-      </div>
-    );
-  }
+  // ---------- Lists for the tabs ----------
 
-  if (!canViewAdmin) {
-    return (
-      <div className="app-main">
-        <div className="container">
-          <div className="card">
-            <div className="card-body text-center">
-              <p className="form-error">{notice}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const filteredUsers = useMemo(
+    () => users.filter((user) => matches(userSearch, user.fullName, user.email)),
+    [users, userSearch]
+  );
+
+  const pendingRecruiters = useMemo(
+    () => users.filter((user) => user.role === "recruiter" && user.recruiterVerificationStatus === "pending"),
+    [users]
+  );
+
+  // Only people who may use the network can be connected.
+  const networkUsers = useMemo(
+    () =>
+      users.filter(
+        (user) =>
+          user.is_active &&
+          !user.is_staff &&
+          (user.role === "candidate" || (user.role === "recruiter" && user.recruiterVerificationStatus === "approved"))
+      ),
+    [users]
+  );
+
+  const filteredTexts = useMemo(
+    () => texts.filter((item) => matches(textSearch, item.key, item.value)),
+    [texts, textSearch]
+  );
+
+  if (!canView) return null;
+
+  const tabs = [
+    { id: "overview" as const, label: "Overview" },
+    { id: "users" as const, label: text("adminUsers", "Users"), count: users.length },
+    { id: "connections" as const, label: "Connections", count: connections.length },
+    { id: "activity" as const, label: "Activity log" },
+    { id: "texts" as const, label: "Page texts", count: texts.length },
+  ];
 
   return (
-    <div className="app-main">
-      <div className="container">
-        <div className="dashboard-header">
-          <h1>{uiContent.adminDashboard}</h1>
-          <p>{uiContent.adminIntro}</p>
-        </div>
-
-        {notice && <div className="form-error mb-2">{notice}</div>}
-
-        {stats && <StatsSection stats={stats} uiContent={uiContent} />}
-
-        <ConnectionsSection
-          uiContent={uiContent}
-          networkUsers={networkUsers}
-          connections={connections}
-          firstUserId={firstUserId}
-          secondUserId={secondUserId}
-          setFirstUserId={setFirstUserId}
-          setSecondUserId={setSecondUserId}
-          connectionSaving={connectionSaving}
-          disconnectLoading={disconnectLoading}
-          createManagedConnection={createManagedConnection}
-          disconnectManagedConnection={disconnectManagedConnection}
-          formatDate={formatDate}
-        />
-
-        <AuditLogsSection
-          uiContent={uiContent}
-          auditLogs={auditLogs}
-          formatDate={formatDate}
-        />
-
-        <UiContentSection
-          uiContent={uiContent}
-          items={filteredUiContentItems}
-          searchTerm={uiContentSearchTerm}
-          setSearchTerm={setUiContentSearchTerm}
-          draftValues={uiContentDraftValues}
-          setDraftValues={setUiContentDraftValues}
-          savingKey={uiContentSavingKey}
-          saveUiContent={saveUiContent}
-        />
-
-        <UsersSection
-          uiContent={uiContent}
-          users={filteredUsers}
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          actionLoading={actionLoading}
-          roleLoading={roleLoading}
-          verificationLoading={verificationLoading}
-          updateUserStatus={updateUserStatus}
-          updateUserRole={updateUserRole}
-          updateRecruiterVerification={updateRecruiterVerification}
-          formatDate={formatDate}
-          getRecruiterVerificationLabel={getRecruiterVerificationLabel}
-        />
+    <Page
+      title={text("adminDashboard", "Admin")}
+      subtitle={text("adminIntro", "Manage accounts, approve recruiters and keep the platform tidy.")}
+    >
+      <div className={styles.tabsBar}>
+        <Tabs items={tabs} active={tab} onChange={setTab} label="Admin sections" />
       </div>
-    </div>
+
+      {message && <Notice tone={message.tone}>{message.text}</Notice>}
+
+      {loading ? (
+        <p className="muted">{text("loading", "Loading...")}</p>
+      ) : (
+        <>
+          {tab === "overview" && (
+            <div className={ui.stack}>
+              {/* The one thing that needs an admin's decision comes first. */}
+              <Panel
+                flush
+                title={
+                  pendingRecruiters.length === 0
+                    ? "No recruiters waiting for approval"
+                    : `${pendingRecruiters.length} ${pendingRecruiters.length === 1 ? "recruiter is" : "recruiters are"} waiting for approval`
+                }
+                hint="Approved recruiters can search candidates and send messages."
+              >
+                {pendingRecruiters.length === 0 ? (
+                  <EmptyState icon={UserCheck} title="All caught up" text="New recruiters will appear here." />
+                ) : (
+                  <ul className={ui.list}>
+                    {pendingRecruiters.map((user) => (
+                      <li key={user.id} className={ui.row}>
+                        <Avatar name={user.fullName || user.email} size={40} />
+                        <div className={ui.rowMain}>
+                          <span className={ui.rowTitle}>{user.fullName || user.email}</span>
+                          <span className={ui.rowText}>
+                            {user.email}, joined {formatDate(user.date_joined)}
+                          </span>
+                        </div>
+                        <VerificationBadge user={user} text={text} />
+                        <div className={ui.rowActions}>
+                          <button
+                            type="button"
+                            className="btn-outline btn-sm"
+                            onClick={() => handleVerify(user, "rejected")}
+                            disabled={busyUserId === user.id}
+                          >
+                            Reject
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-primary btn-sm"
+                            onClick={() => handleVerify(user, "approved")}
+                            disabled={busyUserId === user.id}
+                          >
+                            Approve
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Panel>
+
+              {stats && <StatsSection stats={stats} text={text} />}
+
+              <AuditLogsSection
+                title="Recent admin actions"
+                auditLogs={auditLogs.slice(0, RECENT_ACTIVITY_COUNT)}
+                formatDate={formatDate}
+              />
+            </div>
+          )}
+
+          {tab === "users" && (
+            <UsersSection
+              text={text}
+              users={filteredUsers}
+              totalCount={users.length}
+              searchTerm={userSearch}
+              setSearchTerm={setUserSearch}
+              busyUserId={busyUserId}
+              onToggleActive={handleToggleActive}
+              onChangeRole={handleChangeRole}
+              onVerify={handleVerify}
+              formatDate={formatDate}
+            />
+          )}
+
+          {tab === "connections" && (
+            <ConnectionsSection
+              text={text}
+              networkUsers={networkUsers}
+              connections={connections}
+              firstUserId={firstUserId}
+              secondUserId={secondUserId}
+              setFirstUserId={setFirstUserId}
+              setSecondUserId={setSecondUserId}
+              saving={connecting}
+              removingId={removingId}
+              onConnect={handleConnect}
+              onDisconnect={handleDisconnect}
+              formatDate={formatDate}
+            />
+          )}
+
+          {tab === "activity" && (
+            <AuditLogsSection title="Everything admins changed" auditLogs={auditLogs} formatDate={formatDate} />
+          )}
+
+          {tab === "texts" && (
+            <UiContentSection
+              text={text}
+              items={filteredTexts}
+              totalCount={texts.length}
+              searchTerm={textSearch}
+              setSearchTerm={setTextSearch}
+              draftValues={textDrafts}
+              setDraftValue={(key, value) => setTextDrafts((drafts) => ({ ...drafts, [key]: value }))}
+              savingKey={savingTextKey}
+              onSave={handleSaveText}
+            />
+          )}
+        </>
+      )}
+    </Page>
   );
 }

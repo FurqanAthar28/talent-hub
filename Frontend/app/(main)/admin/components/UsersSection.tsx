@@ -1,179 +1,148 @@
-// app/(main)/admin/components/UsersSection.tsx
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
+import { Users } from "lucide-react";
 
-import type { UiContent } from "../../../api/ui-content";
+import { Avatar, Badge, EmptyState, ui } from "@/app/components/ui";
 import type { AdminUser } from "../types";
+import styles from "../admin.module.css";
+
+type TextFn = (key: string, fallback: string) => string;
 
 type Props = {
-  uiContent: UiContent;
+  text: TextFn;
   users: AdminUser[];
+  totalCount: number;
   searchTerm: string;
-  setSearchTerm: Dispatch<SetStateAction<string>>;
-  actionLoading: number | null;
-  roleLoading: number | null;
-  verificationLoading: number | null;
-  updateUserStatus: (user: AdminUser) => Promise<void>;
-  updateUserRole: (user: AdminUser, role: AdminUser["role"]) => Promise<void>;
-  updateRecruiterVerification: (
-    user: AdminUser,
-    status: "approved" | "rejected"
-  ) => Promise<void>;
+  setSearchTerm: (value: string) => void;
+  busyUserId: number | null; // the user whose action is running
+  onToggleActive: (user: AdminUser) => void;
+  onChangeRole: (user: AdminUser, role: AdminUser["role"]) => void;
+  onVerify: (user: AdminUser, status: "approved" | "rejected") => void;
   formatDate: (value: string | null) => string;
-  getRecruiterVerificationLabel: (
-    user: AdminUser,
-    uiContent: UiContent
-  ) => string;
 };
 
+/** "Approved" in green, "Pending" in amber, "Rejected" in red. */
+export function VerificationBadge({ user, text }: { user: AdminUser; text: TextFn }) {
+  if (user.role !== "recruiter") return null;
+  if (user.recruiterVerificationStatus === "approved") {
+    return <Badge tone="success">{text("adminRecruiterApproved", "Approved")}</Badge>;
+  }
+  if (user.recruiterVerificationStatus === "rejected") {
+    return <Badge tone="danger">{text("adminRecruiterRejected", "Rejected")}</Badge>;
+  }
+  return <Badge tone="warning">{text("adminRecruiterPending", "Waiting for approval")}</Badge>;
+}
+
+/** Every account, with role, status and actions. */
 export default function UsersSection({
-  uiContent,
+  text,
   users,
+  totalCount,
   searchTerm,
   setSearchTerm,
-  actionLoading,
-  roleLoading,
-  verificationLoading,
-  updateUserStatus,
-  updateUserRole,
-  updateRecruiterVerification,
+  busyUserId,
+  onToggleActive,
+  onChangeRole,
+  onVerify,
   formatDate,
-  getRecruiterVerificationLabel,
 }: Props) {
   return (
-    <div className="card">
-      <div className="card-header flex-between">
-        <h3>{uiContent.adminUsers}</h3>
-
+    <section className={`${ui.panel} ${ui.panelFlush}`} aria-label="Users">
+      <div className={styles.toolbar}>
         <input
           type="search"
+          className={styles.search}
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
-          placeholder={uiContent.adminSearchPlaceholder}
-          className="admin-search-input"
+          placeholder={text("adminSearchPlaceholder", "Search by name or email")}
+          aria-label="Search users"
         />
+        <span className={styles.count}>
+          {users.length === totalCount ? `${totalCount} users` : `${users.length} of ${totalCount} users`}
+        </span>
       </div>
 
-      <div className="card-body">
-        {users.length === 0 ? (
-          <p className="text-center muted">{uiContent.adminNoUsers}</p>
-        ) : (
-          <div className="admin-user-list">
-            {users.map((user) => (
-              <div key={user.id} className="admin-user-row">
-                <div>
-                  <div className="font-semibold">{user.fullName}</div>
-                  <div className="text-sm muted">{user.email}</div>
-                </div>
-
-                <div className="text-sm">
-                  <div>{uiContent.adminJoined}</div>
-                  <div className="muted">{formatDate(user.date_joined)}</div>
-                </div>
-
-                <div className="text-sm">
-                  <div>{uiContent.adminLastLogin}</div>
-                  <div className="muted">{formatDate(user.last_login)}</div>
-                </div>
-
-                <div className="text-sm">
-                  <div>{uiContent.adminProfileCompletion}</div>
-                  <div className="muted">{user.profileCompletion}%</div>
-                </div>
-
-                <div className="text-sm">
-                  <div>{uiContent.adminContent}</div>
-                  <div className="muted">
-                    {user.skillsCount} / {user.projectsCount} /{" "}
-                    {user.experiencesCount}
+      {users.length === 0 ? (
+        <EmptyState icon={Users} title={text("adminNoUsers", "No users found")} text="Try another name or email." />
+      ) : (
+        <ul className={ui.list}>
+          {users.map((user) => {
+            const busy = busyUserId === user.id;
+            return (
+              <li key={user.id} className={styles.userRow}>
+                <div className={styles.userWho}>
+                  <Avatar name={user.fullName || user.email} size={40} />
+                  <div className={ui.rowMain}>
+                    <span className={ui.rowTitle}>{user.fullName || "(no name)"}</span>
+                    <span className={ui.rowText}>{user.email}</span>
+                    <div className={styles.badges}>
+                      {user.is_active ? (
+                        <Badge tone="success">{text("adminActive", "Active")}</Badge>
+                      ) : (
+                        <Badge tone="neutral">{text("adminInactive", "Switched off")}</Badge>
+                      )}
+                      <VerificationBadge user={user} text={text} />
+                    </div>
                   </div>
                 </div>
 
-                <div className="text-sm">
-                  <div>{uiContent.adminRole}</div>
+                <div>
+                  <span className={styles.cellLabel}>{text("adminRole", "Role")}</span>
+                  {/* Changing the role asks first (see onChangeRole in page.tsx). */}
                   <select
+                    className={styles.select}
                     value={user.role}
-                    onChange={(event) =>
-                      updateUserRole(user, event.target.value as AdminUser["role"])
-                    }
-                    disabled={roleLoading === user.id}
+                    onChange={(event) => onChangeRole(user, event.target.value as AdminUser["role"])}
+                    disabled={busy}
+                    aria-label={`Role of ${user.fullName || user.email}`}
                   >
-                    <option value="candidate">{uiContent.candidate}</option>
-                    <option value="recruiter">{uiContent.recruiter}</option>
-                    <option value="admin">{uiContent.adminRole}</option>
+                    <option value="candidate">Candidate</option>
+                    <option value="recruiter">Recruiter</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </div>
 
-                <div className="text-sm">
-                  <div>{uiContent.adminRecruiterVerification}</div>
-                  <div className="muted">
-                    {getRecruiterVerificationLabel(user, uiContent)}
-                  </div>
+                <div className={styles.cellValue}>
+                  <span className={styles.cellLabel}>
+                    {text("adminJoined", "Joined")} {formatDate(user.date_joined)}
+                  </span>
+                  <span className={styles.cellLabel}>
+                    {text("adminLastLogin", "Last seen")} {user.last_login ? formatDate(user.last_login) : "never"}
+                  </span>
+                  <span className={styles.cellLabel}>
+                    {text("adminProfileCompletion", "Profile")} {user.profileCompletion}% complete
+                  </span>
+                </div>
 
-                  {user.role === "recruiter" && (
-                    <div className="admin-inline-actions">
-                      <button
-                        type="button"
-                        className="btn-outline btn-sm"
-                        onClick={() =>
-                          updateRecruiterVerification(user, "approved")
-                        }
-                        disabled={
-                          verificationLoading === user.id ||
-                          user.recruiterVerificationStatus === "approved"
-                        }
-                      >
-                        {verificationLoading === user.id
-                          ? uiContent.adminVerifyingRecruiter
-                          : uiContent.adminApproveRecruiter}
-                      </button>
-
-                      <button
-                        type="button"
-                        className="btn-outline btn-sm"
-                        onClick={() =>
-                          updateRecruiterVerification(user, "rejected")
-                        }
-                        disabled={
-                          verificationLoading === user.id ||
-                          user.recruiterVerificationStatus === "rejected"
-                        }
-                      >
-                        {verificationLoading === user.id
-                          ? uiContent.adminVerifyingRecruiter
-                          : uiContent.adminRejectRecruiter}
-                      </button>
-                    </div>
+                <div className={styles.rowButtons}>
+                  {user.role === "recruiter" && user.recruiterVerificationStatus !== "approved" && (
+                    <button type="button" className="btn-primary btn-sm" onClick={() => onVerify(user, "approved")} disabled={busy}>
+                      {text("adminApproveRecruiter", "Approve")}
+                    </button>
                   )}
+                  {user.role === "recruiter" && user.recruiterVerificationStatus !== "rejected" && (
+                    <button type="button" className="btn-outline btn-sm" onClick={() => onVerify(user, "rejected")} disabled={busy}>
+                      {text("adminRejectRecruiter", "Reject")}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={user.is_active ? "btn-danger-outline btn-sm" : "btn-outline btn-sm"}
+                    disabled={busy}
+                    onClick={() => onToggleActive(user)}
+                  >
+                    {busy
+                      ? text("adminUpdating", "Saving...")
+                      : user.is_active
+                        ? text("adminDeactivate", "Switch off")
+                        : text("adminActivate", "Switch on")}
+                  </button>
                 </div>
-
-                <div className="text-sm">
-                  <div>{uiContent.adminStatus}</div>
-                  <div className="muted">
-                    {user.is_active
-                      ? uiContent.adminActive
-                      : uiContent.adminInactive}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn-outline btn-sm"
-                  disabled={actionLoading === user.id}
-                  onClick={() => updateUserStatus(user)}
-                >
-                  {actionLoading === user.id
-                    ? uiContent.adminUpdating
-                    : user.is_active
-                      ? uiContent.adminDeactivate
-                      : uiContent.adminActivate}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }

@@ -1,54 +1,38 @@
+"""
+Web addresses for the connections app.
+
+config/urls.py adds "api/connections/" in front of each one,
+so "users/" below becomes "/api/connections/users/".
+"""
+
 from django.urls import path
 
-from .views import (
-    users_list_view,
-    send_connection_request_view,
-    pending_requests_view,
-    sent_requests_view,
-    accept_request_view,
-    reject_request_view,
-    my_connections_view,
-    conversations_list_view,
-    start_conversation_view,
-    conversation_messages_view,
-)
+from . import admin_views, views
 
-from .admin_views import (
-    admin_connections_view,
-    admin_connect_users_view,
-    admin_disconnect_users_view,
-    admin_conversations_view,
-    admin_conversation_detail_view,
-)
-
+app_name = "connections"
 
 urlpatterns = [
-    # User APIs
-    path("users/", users_list_view),
-    path("send/", send_connection_request_view),
-    path("pending/", pending_requests_view),
-    path("sent/", sent_requests_view),
-    path("accept/", accept_request_view),
-    path("reject/", reject_request_view),
-    path("my-connections/", my_connections_view),
-
-    # Messaging APIs
-    path("conversations/", conversations_list_view),
-    path("conversations/start/", start_conversation_view),
+    # --- People and requests ---
+    path("users/", views.users_list_view, name="users"),
+    path("my-connections/", views.my_connections_view, name="my-connections"),
+    path("send/", views.send_connection_request_view, name="send-request"),
+    path("pending/", views.pending_requests_view, name="pending-requests"),
+    path("sent/", views.sent_requests_view, name="sent-requests"),
+    path("accept/", views.accept_request_view, name="accept-request"),
+    path("reject/", views.reject_request_view, name="reject-request"),
+    # --- Messages ---
+    path("conversations/", views.conversations_list_view, name="conversations"),
+    path("conversations/start/", views.start_conversation_view, name="start-conversation"),
     path(
         "conversations/<int:conversation_id>/messages/",
-        conversation_messages_view,
+        views.conversation_messages_view,
+        name="conversation-messages",
     ),
-
-    # Admin APIs
-    path("admin/connections/", admin_connections_view),
-    path("admin/connect/", admin_connect_users_view),
-    path("admin/disconnect/", admin_disconnect_users_view),
-
-    # Admin Messaging APIs
-    path("admin/conversations/", admin_conversations_view),
+    # --- Admin only ---
+    path("admin/conversations/", admin_views.admin_conversations_view, name="admin-conversations"),
     path(
         "admin/conversations/<int:conversation_id>/",
-        admin_conversation_detail_view,
+        admin_views.admin_conversation_detail_view,
+        name="admin-conversation-detail",
     ),
 ]

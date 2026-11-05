@@ -1,77 +1,65 @@
 "use client";
 
-import { useState } from "react";
+/**
+ * "Projects" card on the edit-profile page: a list of my projects,
+ * plus a pop-up to add or edit one.
+ * Loading and saving are done by useProfileList (shared with Experience).
+ */
 
+import { useState, type ChangeEvent } from "react";
+
+import { MESSAGES } from "@/app/config/messages";
+import { useProfileList } from "../useProfileList";
 import ProjectCard from "./ProjectCard";
 import ProjectModal from "./ProjectModal";
 import {
   emptyProjectForm,
+  formToProjectBody,
+  PROJECT_ROUTES,
+  projectToForm,
   type Project,
   type ProjectFormState,
 } from "./projectTypes";
-import { useProjects } from "./useProjects";
 
 type ProjectsSectionProps = {
+  // Called after a change, so the page can refresh "profile complete" etc.
   onProfileChange?: () => void;
-  onCountChange?: (count: number) => void;
 };
 
-export default function ProjectsSection({
-  onProfileChange,
-  onCountChange,
-}: ProjectsSectionProps) {
-  const { projects, error, saving, saveProject, deleteProject, clearError } =
-    useProjects({
-      onProfileChange,
-      onCountChange,
-    });
+export default function ProjectsSection({ onProfileChange }: ProjectsSectionProps) {
+  const projects = useProfileList<Project>(PROJECT_ROUTES, onProfileChange);
 
   const [isOpen, setIsOpen] = useState(false);
-  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  // null = adding a new project; a number = editing that project.
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<ProjectFormState>(emptyProjectForm);
 
-  function handleFormChange(
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) {
+  // One handler for every box: the box's "name" says which field to update.
+  function handleFormChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     const { name, value } = event.target;
-
-    setForm((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+    setForm((previous) => ({ ...previous, [name]: value }));
   }
 
-  function handleOpen(project?: Project) {
-    if (project) {
-      setEditingProject(project);
-      setForm({
-        title: project.title,
-        description: project.description,
-        techStack: project.tech_stack.join(", "),
-        githubUrl: project.github_url,
-      });
-    } else {
-      setEditingProject(null);
-      setForm(emptyProjectForm);
-    }
-
-    clearError();
+  function openForm(project?: Project) {
+    setEditingId(project ? project.id : null);
+    setForm(project ? projectToForm(project) : emptyProjectForm);
+    projects.clearError();
     setIsOpen(true);
   }
 
-  function handleClose() {
+  function closeForm() {
     setIsOpen(false);
-    setEditingProject(null);
-    setForm(emptyProjectForm);
-    clearError();
+    projects.clearError();
   }
 
   async function handleSave() {
-    const saved = await saveProject(form, editingProject?.id);
-
-    if (saved) {
-      handleClose();
+    if (!form.title.trim()) {
+      projects.setError(MESSAGES.PROFILE.PROJECT_TITLE_REQUIRED);
+      return;
     }
+
+    const saved = await projects.save(formToProjectBody(form), editingId ?? undefined);
+    if (saved) closeForm();
   }
 
   return (
@@ -82,63 +70,59 @@ export default function ProjectsSection({
             <p className="eyebrow">Portfolio</p>
             <h3>Projects</h3>
             <p className="muted text-sm">
-              Showcase your best work, tools used, and links recruiters can
-              review.
+              Showcase your best work, tools used, and links recruiters can review.
             </p>
           </div>
 
-          <button
-            type="button"
-            className="btn-outline btn-sm"
-            onClick={() => handleOpen()}
-          >
-            + Add Project
+          <button type="button" className="btn-outline btn-sm" onClick={() => openForm()}>
+            + Add project
           </button>
         </div>
 
         <div className="card-body">
-          {projects.length === 0 ? (
+          {projects.loading ? (
+            <p className="muted">Loading projects...</p>
+          ) : projects.items.length === 0 ? (
             <div className="empty-state">
               <h3>No projects added yet</h3>
-              <p>
-                Add a project to show your practical experience and technical
-                skills.
-              </p>
+              <p>Add a project to show your practical experience and technical skills.</p>
 
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => handleOpen()}
-              >
-                Add First Project
+              <button type="button" className="btn-primary" onClick={() => openForm()}>
+                Add first project
               </button>
             </div>
           ) : (
             <div className="project-list">
-              {projects.map((project) => (
+              {projects.items.map((project) => (
                 <ProjectCard
                   key={project.id}
                   project={project}
-                  onEdit={handleOpen}
-                  onDelete={deleteProject}
+                  busy={projects.saving}
+                  onEdit={openForm}
+                  onDelete={projects.remove}
                 />
               ))}
             </div>
           )}
 
-          {error && <p className="form-error mt-2">{error}</p>}
+          {/* While the pop-up is open, it shows the error itself. */}
+          {!isOpen && projects.error && (
+            <p className="form-error mt-2" role="alert">
+              {projects.error}
+            </p>
+          )}
         </div>
       </section>
 
       {isOpen && (
         <ProjectModal
-          editingProject={editingProject}
+          isEditing={editingId !== null}
           form={form}
-          error={error}
-          saving={saving}
+          error={projects.error}
+          saving={projects.saving}
           onChange={handleFormChange}
           onSave={handleSave}
-          onClose={handleClose}
+          onClose={closeForm}
         />
       )}
     </>

@@ -1,299 +1,286 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+/**
+ * "My network" page, with 4 tabs:
+ *   Discover    -> everyone I could connect with
+ *   Connections -> people I'm already connected to
+ *   Received    -> requests waiting for MY answer
+ *   Sent        -> requests I sent
+ *
+ * ONE ACTION AT A TIME
+ * While one button is working (connect, accept, message...), every action
+ * button is switched off. `busyAction` remembers which one is running, for
+ * example "accept-12", so only THAT button says "Accepting...".
+ */
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Inbox, MapPin, Send, UserPlus, Users } from "lucide-react";
+
+import { errorText } from "../../api/client";
+import { Avatar, Badge, EmptyState, Notice, Page, Panel, Tabs, ui } from "../../components/ui";
+import { MESSAGES } from "../../config/messages";
+import { ROUTES } from "../../config/routes";
+import { useUiContent } from "../../hooks/useUiContent";
 import {
-  fetchUiContent,
-  getUiContentErrorMessage,
-  type UiContent,
-} from "../../api/ui-content";
-import {
-  fetchAuthenticatedUser,
   fetchNetworkData,
-  readApiMessage,
   sendConnectionInvite,
   updateConnectionRequest,
   type ConnectionRequest,
   type ConnectionUser,
 } from "../../services/connections";
 import { startConversation } from "../../services/messages";
+import { isAdmin, useCurrentUser } from "../CurrentUserContext";
+import styles from "./connections.module.css";
 
-// ====================== TYPES ======================
 type Tab = "discover" | "connections" | "received" | "sent";
+type RequestAction = "accept" | "reject";
+type TextFn = (key: string, fallback: string) => string;
 
-// ====================== HELPER FUNCTIONS ======================
-function getInitials(name: string): string {
-  return name
-    .split(" ")
-    .map((word) => word[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+const TABS: Tab[] = ["discover", "connections", "received", "sent"];
+
+// How many invitations to preview on the other tabs.
+const INVITATION_PREVIEW_COUNT = 2;
+
+// ====================== SMALL HELPERS ======================
+
+/** The words and color for a relationship, e.g. "Request sent" in amber. */
+function statusBadge(status: string, text: TextFn) {
+  switch (status) {
+    case "connected":
+    case "accepted":
+      return <Badge tone="success">{text("connectionStatusConnected", "Connected")}</Badge>;
+    case "pending":
+      return <Badge tone="warning">{text("connectionStatusPending", "Pending")}</Badge>;
+    case "rejected":
+      return <Badge tone="neutral">{text("connectionStatusDeclined", "Declined")}</Badge>;
+    case "sent_pending":
+      return <Badge tone="warning">{text("connectionStatusRequestSent", "Request sent")}</Badge>;
+    case "received_pending":
+      return <Badge tone="accent">{text("connectionStatusAwaitingResponse", "Wants to connect")}</Badge>;
+    default:
+      return null;
+  }
 }
 
-function getStatusText(status: string, ui: UiContent): string {
-  const statusMap: Record<string, string> = {
-    connected: ui.connectionStatusConnected,
-    pending: ui.connectionStatusPending,
-    accepted: ui.connectionStatusAccepted,
-    rejected: ui.connectionStatusDeclined,
-    sent_pending: ui.connectionStatusRequestSent,
-    received_pending: ui.connectionStatusAwaitingResponse,
-  };
-  return statusMap[status] || ui.connectionStatusNotConnected || "Not Connected";
-}
-
-function getStatusClass(status: string): string {
-  if (status.includes("connected") || status.includes("accepted")) return "status-badge status-success";
-  if (status.includes("rejected")) return "status-badge status-muted";
-  if (status.includes("pending")) return "status-badge status-warning";
-  return "status-badge";
-}
-
+/** "Mar 3, 3:45 PM" */
 function formatRequestTime(createdAt: string): string {
   return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
     hour: "numeric",
-    minute: "numeric",
-    hour12: true,
+    minute: "2-digit",
   }).format(new Date(createdAt));
 }
 
-function getRequestUser(request: ConnectionRequest, direction: "sender" | "receiver"): ConnectionUser {
-  const isSender = direction === "sender";
+/** Does this person match the search box? */
+function matchesSearch(user: ConnectionUser, search: string): boolean {
+  const query = search.trim().toLowerCase();
+  if (!query) return true;
 
+  return [user.fullName, user.email, user.headline, user.location]
+    .join(" ")
+    .toLowerCase()
+    .includes(query);
+}
+
+/** Turn a request I accepted into a "connection" row for the sender. */
+function senderAsConnection(request: ConnectionRequest): ConnectionUser {
   return {
-    id: isSender ? request.sender : request.receiver,
-    fullName: isSender ? request.sender_name : request.receiver_name,
-    email: isSender ? request.sender_email : request.receiver_email,
-    headline: isSender ? request.sender_headline : request.receiver_headline,
-    location: isSender ? request.sender_location : request.receiver_location,
+    id: request.sender,
+    fullName: request.sender_name,
+    email: request.sender_email,
+    headline: request.sender_headline,
+    location: request.sender_location,
     connectionStatus: "connected",
     requestId: null,
     requestStatus: "accepted",
   };
 }
 
-function getTabLabel(tab: Tab, ui: UiContent) {
-  if (tab === "discover") return ui.connectionDiscover || "Discover";
-  if (tab === "connections") return ui.connections || "Connections";
-  if (tab === "received") return ui.connectionReceived || "Received";
-  return ui.connectionSent || "Sent";
-}
+// ====================== SMALL COMPONENTS ======================
 
-function EmptyNetworkState({ message }: { message: string }) {
-  return (
-    <div className="network-empty">
-      <div className="network-empty-mark">+</div>
-      <p>{message}</p>
-    </div>
-  );
-}
-
-// ====================== REUSABLE COMPONENTS ======================
-
-// Card for users in Discover and Connections tab
-const UserCard = memo(function UserCard({
-  user,
-  ui,
-  actionLoadingKey,
-  onConnect,
-  onRequestAction,
-  onMessage,
-  onViewProfile,
-}: {
-  user: ConnectionUser;
-  ui: UiContent;
-  actionLoadingKey: string;
-  onConnect: (id: number) => void;
-  onRequestAction: (id: number, action: "accept" | "reject") => void;
-  onMessage: (id: number) => void;
-  onViewProfile: (id: number) => void;
-}) {
-  const isActionLoading = actionLoadingKey !== "";
-  const isPending = user.connectionStatus === "sent_pending";
-  const isConnected = user.connectionStatus === "connected";
-
-  return (
-    <article className="connection-card">
-      <div className="connection-top">
-        <div className="connection-avatar">{getInitials(user.fullName)}</div>
-
-        <div className="connection-info">
-          <div className="connection-name-row">
-            <button
-              type="button"
-              className="connection-name-link"
-              onClick={() => onViewProfile(user.id)}
-            >
-              {user.fullName}
-            </button>
-            <span className={getStatusClass(user.connectionStatus)}>
-              {getStatusText(user.connectionStatus, ui)}
-            </span>
-          </div>
-          <div className="connection-headline">{user.headline || ui.professionalFallback || "Professional"}</div>
-          {user.location && <div className="connection-location">{user.location}</div>}
-        </div>
-      </div>
-
-      <div className="connection-actions">
-        {isConnected ? (
-          <>
-            <button
-              type="button"
-              className="btn-outline btn-sm"
-              onClick={() => onViewProfile(user.id)}
-            >
-              {ui.viewProfile || "View"}
-            </button>
-            <button
-              type="button"
-              className="btn-primary btn-sm"
-              onClick={() => onMessage(user.id)}
-              disabled={isActionLoading}
-            >
-              {ui.message || "Message"}
-            </button>
-          </>
-        ) : user.connectionStatus === "received_pending" && user.requestId ? (
-          <ReceivedRequestButtons
-            requestId={user.requestId}
-            ui={ui}
-            actionLoadingKey={actionLoadingKey}
-            onAction={onRequestAction}
-          />
-        ) : (
-          <>
-            {isPending ? (
-              <button type="button" className="btn-outline btn-sm" disabled>
-                {ui.connectionStatusRequestSent || "Pending"}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn-primary btn-sm"
-                onClick={() => onConnect(user.id)}
-                disabled={isActionLoading}
-              >
-                {actionLoadingKey === `connect-${user.id}` ? ui.connectionSending : ui.connectionConnect || "Connect"}
-              </button>
-            )}
-          <button
-            type="button"
-            className="btn-outline btn-sm"
-            onClick={() => onViewProfile(user.id)}
-          >
-            {ui.viewProfile || "View"}
-          </button>
-          </>
-        )}
-      </div>
-    </article>
-  );
-});
-
-// Buttons for accepting/rejecting requests (reused)
+/** Accept / Ignore buttons for a request someone sent me. */
 function ReceivedRequestButtons({
   requestId,
-  ui,
-  actionLoadingKey,
+  busyAction,
+  text,
   onAction,
 }: {
   requestId: number;
-  ui: UiContent;
-  actionLoadingKey: string;
-  onAction: (id: number, action: "accept" | "reject") => void;
+  busyAction: string;
+  text: TextFn;
+  onAction: (requestId: number, action: RequestAction) => void;
 }) {
-  const acceptKey = `accept-${requestId}`;
-  const rejectKey = `reject-${requestId}`;
-  const isActionLoading =
-    actionLoadingKey === acceptKey ||
-    actionLoadingKey === rejectKey ||
-    actionLoadingKey === `request-${requestId}`;
-
   return (
     <>
       <button
         type="button"
-        className="btn-primary btn-sm"
-        onClick={() => onAction(requestId, "accept")}
-        disabled={isActionLoading}
+        className="btn-outline btn-sm"
+        onClick={() => onAction(requestId, "reject")}
+        disabled={busyAction !== ""}
       >
-        {actionLoadingKey === acceptKey ? ui.connectionAccepting : ui.connectionAccept || "Accept"}
+        {busyAction === `reject-${requestId}`
+          ? text("connectionIgnoring", "Ignoring...")
+          : text("connectionIgnore", "Ignore")}
       </button>
       <button
         type="button"
-        className="btn-outline btn-sm"
-        onClick={() => onAction(requestId, "reject")}
-        disabled={isActionLoading}
+        className="btn-primary btn-sm"
+        onClick={() => onAction(requestId, "accept")}
+        disabled={busyAction !== ""}
       >
-        {actionLoadingKey === rejectKey ? ui.connectionIgnoring : ui.connectionIgnore || "Ignore"}
+        {busyAction === `accept-${requestId}`
+          ? text("connectionAccepting", "Accepting...")
+          : text("connectionAccept", "Accept")}
       </button>
     </>
   );
 }
 
-// Card for Received/Sent Requests
-const RequestCard = memo(function RequestCard({
+/** Name (links to their profile), headline and city. Shared by both row types. */
+function PersonInfo({
+  id,
+  name,
+  headline,
+  location,
+  extra,
+  text,
+}: {
+  id: number;
+  name: string;
+  headline: string;
+  location: string;
+  extra?: React.ReactNode;
+  text: TextFn;
+}) {
+  return (
+    <div className={ui.rowMain}>
+      <Link href={ROUTES.USER_PROFILE(id)} className={ui.rowTitle}>
+        {name}
+      </Link>
+      <span className={ui.rowText}>{headline || text("professionalFallback", "Professional")}</span>
+      <div className={styles.meta}>
+        {location && (
+          <span className={styles.metaItem}>
+            <MapPin size={13} aria-hidden="true" />
+            {location}
+          </span>
+        )}
+        {extra}
+      </div>
+    </div>
+  );
+}
+
+/** One person in Discover / Connections, with the right button for them. */
+function PersonRow({
+  user,
+  busyAction,
+  text,
+  onConnect,
+  onRequestAction,
+  onMessage,
+}: {
+  user: ConnectionUser;
+  busyAction: string;
+  text: TextFn;
+  onConnect: (userId: number) => void;
+  onRequestAction: (requestId: number, action: RequestAction) => void;
+  onMessage: (userId: number) => void;
+}) {
+  const isBusy = busyAction !== "";
+  const status = user.connectionStatus;
+
+  let actions: React.ReactNode;
+  if (status === "connected") {
+    actions = (
+      <button type="button" className="btn-outline btn-sm" onClick={() => onMessage(user.id)} disabled={isBusy}>
+        {busyAction === `message-${user.id}` ? "Opening..." : text("message", "Message")}
+      </button>
+    );
+  } else if (status === "received_pending" && user.requestId) {
+    actions = (
+      <ReceivedRequestButtons requestId={user.requestId} busyAction={busyAction} text={text} onAction={onRequestAction} />
+    );
+  } else if (status === "sent_pending") {
+    actions = (
+      <button type="button" className="btn-outline btn-sm" disabled>
+        {text("connectionStatusRequestSent", "Request sent")}
+      </button>
+    );
+  } else {
+    actions = (
+      <button type="button" className="btn-primary btn-sm" onClick={() => onConnect(user.id)} disabled={isBusy}>
+        {busyAction === `connect-${user.id}` ? text("connectionSending", "Sending...") : text("connectionConnect", "Connect")}
+      </button>
+    );
+  }
+
+  return (
+    <li className={ui.row}>
+      <Avatar name={user.fullName} size={44} />
+      <PersonInfo
+        id={user.id}
+        name={user.fullName}
+        headline={user.headline}
+        location={user.location}
+        // Only "Connected" needs a label: for pending requests the button already says it.
+        extra={status === "connected" ? statusBadge(status, text) : null}
+        text={text}
+      />
+      <div className={ui.rowActions}>{actions}</div>
+    </li>
+  );
+}
+
+/** One request (Invitations / Sent). */
+function RequestRow({
   request,
   direction,
-  ui,
-  actionLoadingKey,
+  busyAction,
+  text,
   onAction,
 }: {
   request: ConnectionRequest;
   direction: "received" | "sent";
-  ui: UiContent;
-  actionLoadingKey: string;
-  onAction: (id: number, action: "accept" | "reject") => void;
+  busyAction: string;
+  text: TextFn;
+  onAction: (requestId: number, action: RequestAction) => void;
 }) {
+  // A received request shows the SENDER; a sent one shows the RECEIVER.
   const isReceived = direction === "received";
-  const name = isReceived ? request.sender_name : request.receiver_name;
-  const headline = isReceived ? request.sender_headline : request.receiver_headline;
-  const location = isReceived ? request.sender_location : request.receiver_location;
+  const person = isReceived
+    ? { id: request.sender, name: request.sender_name, headline: request.sender_headline, location: request.sender_location }
+    : { id: request.receiver, name: request.receiver_name, headline: request.receiver_headline, location: request.receiver_location };
 
   return (
-    <article className="connection-card connection-request-card">
-      <div className="connection-top">
-        <div className="connection-avatar">{getInitials(name)}</div>
-        <div className="connection-info">
-          <div className="connection-name-row">
-            <div className="connection-name">{name}</div>
-            <span className={getStatusClass(request.status)}>
-              {getStatusText(request.status, ui)}
-            </span>
-          </div>
-          <div className="connection-headline">{headline || ui.professionalFallback || "Professional"}</div>
-          {location && <div className="connection-location">{location}</div>}
-          <div className="request-meta">
-            {isReceived ? ui.connectionReceived || "Received" : ui.connectionSent || "Sent"} {formatRequestTime(request.created_at)}
-          </div>
-        </div>
-      </div>
-
-      <div className="connection-actions">
+    <li className={ui.row}>
+      <Avatar name={person.name} size={44} />
+      <PersonInfo
+        {...person}
+        text={text}
+        extra={<span>{`${isReceived ? "Received" : "Sent"} ${formatRequestTime(request.created_at)}`}</span>}
+      />
+      <div className={ui.rowActions}>
         {isReceived && request.status === "pending" ? (
-          <ReceivedRequestButtons
-            requestId={request.id}
-            ui={ui}
-            actionLoadingKey={actionLoadingKey}
-            onAction={onAction}
-          />
+          <ReceivedRequestButtons requestId={request.id} busyAction={busyAction} text={text} onAction={onAction} />
         ) : (
-          <button type="button" className="btn-outline btn-sm" disabled>
-            {getStatusText(request.status, ui)}
-          </button>
+          statusBadge(request.status, text)
         )}
       </div>
-    </article>
+    </li>
   );
-});
+}
 
-// ====================== MAIN COMPONENT ======================
+// ====================== THE PAGE ======================
+
 export default function ConnectionsPage() {
   const router = useRouter();
+  const text = useUiContent();
+  const me = useCurrentUser(); // loaded once by the layout
 
-  const [ui, setUi] = useState<UiContent>({});
   const [activeTab, setActiveTab] = useState<Tab>("discover");
 
   const [allUsers, setAllUsers] = useState<ConnectionUser[]>([]);
@@ -304,375 +291,306 @@ export default function ConnectionsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [notice, setNotice] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState("");
+  const [busyAction, setBusyAction] = useState(""); // "" = nothing running
 
-  // Load data from server
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    setNotice("");
-
-    try {
-      const uiContent = await fetchUiContent();
-      setUi(uiContent);
-
-      const user = await fetchAuthenticatedUser();
-      if (user.isStaff || user.role === "admin") {
-        router.replace(uiContent.routeAdmin);
-        return;
-      }
-
-      const data = await fetchNetworkData();
-      setAllUsers(data.users);
-      setConnections(data.connections);
-      setReceivedRequests(data.receivedRequests);
-      setSentRequests(data.sentRequests);
-    } catch (error) {
-      console.error(error);
-      setNotice(getUiContentErrorMessage(error));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [router]);
-
+  // First load.
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void loadData();
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [loadData]);
-
-  // Action Handlers
-  const handleConnect = useCallback(async (userId: number) => {
-    setActionLoading(`connect-${userId}`);
-    setNotice("");
-    try {
-      const res = await sendConnectionInvite(userId);
-      if (res.ok) {
-        const request = (await res.json()) as ConnectionRequest;
-        setAllUsers((currentUsers) =>
-          currentUsers.map((user) =>
-            user.id === userId
-              ? {
-                  ...user,
-                  connectionStatus: "sent_pending",
-                  requestId: request.id,
-                  requestStatus: "pending",
-                }
-              : user
-          )
-        );
-        setSentRequests((currentRequests) => [request, ...currentRequests]);
-        setNotice(ui.connectionRequestSent || "Request sent successfully");
-      } else {
-        setNotice(await readApiMessage(res, ui.connectionRequestFailed));
-      }
-    } catch {
-      setNotice(ui.connectionUnableToSend || "Failed to send request");
-    } finally {
-      setActionLoading("");
+    // Admins manage the network on the admin page instead.
+    if (isAdmin(me)) {
+      router.replace(ROUTES.ADMIN);
+      return;
     }
-  }, [ui.connectionRequestFailed, ui.connectionRequestSent, ui.connectionUnableToSend]);
 
-  const handleRequestAction = useCallback(async (requestId: number, action: "accept" | "reject") => {
-    setActionLoading(`${action}-${requestId}`);
+    let pageIsOpen = true;
+
+    async function loadPage() {
+      try {
+        const data = await fetchNetworkData();
+        if (!pageIsOpen) return;
+
+        setAllUsers(data.users);
+        setConnections(data.connections);
+        setReceivedRequests(data.receivedRequests);
+        setSentRequests(data.sentRequests);
+      } catch (error) {
+        if (pageIsOpen) setNotice(errorText(error, MESSAGES.NETWORK.LOAD_FAILED));
+      } finally {
+        if (pageIsOpen) setIsLoading(false);
+      }
+    }
+
+    void loadPage();
+
+    return () => {
+      pageIsOpen = false;
+    };
+  }, [router, me]);
+
+  /** Change one person's status in the Discover list. */
+  function updateUser(userId: number, changes: Partial<ConnectionUser>) {
+    setAllUsers((users) => users.map((user) => (user.id === userId ? { ...user, ...changes } : user)));
+  }
+
+  async function handleConnect(userId: number) {
+    if (busyAction) return;
+    setBusyAction(`connect-${userId}`);
     setNotice("");
+
     try {
-      const res = await updateConnectionRequest(requestId, action);
-      if (res.ok) {
-        const request = receivedRequests.find((currentRequest) => currentRequest.id === requestId);
-        const requesterId = request?.sender;
+      const request = await sendConnectionInvite(userId);
 
-        setReceivedRequests((currentRequests) =>
-          currentRequests.filter((currentRequest) => currentRequest.id !== requestId)
-        );
+      updateUser(userId, {
+        connectionStatus: "sent_pending",
+        requestId: request.id,
+        requestStatus: "pending",
+      });
 
-        if (request && action === "accept") {
-          const connectedUser = getRequestUser(request, "sender");
+      // Django may RE-OPEN an old request (same id), so replace it instead of
+      // adding it twice.
+      setSentRequests((requests) => [request, ...requests.filter((r) => r.id !== request.id)]);
+      setNotice(text("connectionRequestSent", MESSAGES.NETWORK.REQUEST_SENT));
+    } catch (error) {
+      setNotice(errorText(error, MESSAGES.NETWORK.REQUEST_FAILED));
+    } finally {
+      setBusyAction("");
+    }
+  }
 
-          setConnections((currentConnections) => {
-            if (currentConnections.some((user) => user.id === connectedUser.id)) {
-              return currentConnections;
-            }
+  async function handleRequestAction(requestId: number, action: RequestAction) {
+    if (busyAction) return;
+    setBusyAction(`${action}-${requestId}`);
+    setNotice("");
 
-            return [connectedUser, ...currentConnections];
-          });
-        }
+    try {
+      await updateConnectionRequest(requestId, action);
 
-        if (requesterId) {
-          setAllUsers((currentUsers) =>
-            currentUsers.map((user) =>
-              user.id === requesterId
-                ? {
-                    ...user,
-                    connectionStatus: action === "accept" ? "connected" : "none",
-                    requestId: null,
-                    requestStatus: action === "accept" ? "accepted" : "rejected",
-                  }
-                : user
-            )
+      const request = receivedRequests.find((r) => r.id === requestId);
+      setReceivedRequests((requests) => requests.filter((r) => r.id !== requestId));
+
+      if (request) {
+        if (action === "accept") {
+          const newConnection = senderAsConnection(request);
+          setConnections((list) =>
+            list.some((user) => user.id === newConnection.id) ? list : [newConnection, ...list]
           );
         }
 
-        setNotice(action === "accept" ? ui.connectionRequestAccepted : ui.connectionRequestIgnored);
-      } else {
-        setNotice(await readApiMessage(res, ui.connectionRequestFailed || "Action failed"));
+        updateUser(request.sender, {
+          connectionStatus: action === "accept" ? "connected" : "none",
+          requestId: null,
+          requestStatus: action === "accept" ? "accepted" : "rejected",
+        });
       }
-    } catch {
-      setNotice(ui.connectionUnableToUpdate || "Failed to update request");
-    } finally {
-      setActionLoading("");
-    }
-  }, [
-    receivedRequests,
-    ui.connectionRequestAccepted,
-    ui.connectionRequestFailed,
-    ui.connectionRequestIgnored,
-    ui.connectionUnableToUpdate,
-  ]);
 
-  const handleMessage = useCallback(async (userId: number) => {
-    setActionLoading(`message-${userId}`);
+      setNotice(
+        action === "accept"
+          ? text("connectionRequestAccepted", MESSAGES.NETWORK.ACCEPTED)
+          : text("connectionRequestIgnored", MESSAGES.NETWORK.IGNORED)
+      );
+    } catch (error) {
+      setNotice(errorText(error, MESSAGES.NETWORK.UPDATE_FAILED));
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function handleMessage(userId: number) {
+    if (busyAction) return;
+    setBusyAction(`message-${userId}`);
+    setNotice("");
+
     try {
-      const conversation = await startConversation(ui, userId);
-      router.push(`${ui.routeMessages}?conversation=${conversation.id}`);
-    } catch {
-      setNotice("Failed to start conversation");
-    } finally {
-      setActionLoading("");
+      const conversation = await startConversation(userId);
+      router.push(`${ROUTES.MESSAGES}?conversation=${conversation.id}`);
+      // (no setBusyAction("") here: we are leaving the page)
+    } catch (error) {
+      setNotice(errorText(error, MESSAGES.MESSAGES.START_FAILED));
+      setBusyAction("");
     }
-  }, [router, ui]);
+  }
 
-  const handleViewProfile = useCallback(
-    (userId: number) => {
-      router.push(`/profile/${userId}`);
-    },
-    [router]
-  );
+  function tabLabel(tab: Tab) {
+    if (tab === "discover") return text("connectionDiscover", "Discover");
+    if (tab === "connections") return text("connections", "Connections");
+    if (tab === "received") return text("connectionReceived", "Received");
+    return text("connectionSent", "Sent");
+  }
 
-  const getUserActionLoadingKey = useCallback(
-    (user: ConnectionUser) => {
-      const requestActionKey =
-        user.requestId &&
-        (actionLoading === `accept-${user.requestId}` ||
-          actionLoading === `reject-${user.requestId}`)
-          ? actionLoading
-          : "";
+  const tabCounts: Record<Tab, number> = {
+    discover: allUsers.length,
+    connections: connections.length,
+    received: receivedRequests.length,
+    sent: sentRequests.length,
+  };
 
-      if (requestActionKey) return requestActionKey;
+  const filteredUsers = allUsers.filter((user) => matchesSearch(user, searchTerm));
+  const filteredConnections = connections.filter((user) => matchesSearch(user, searchTerm));
 
-      if (
-        actionLoading === `connect-${user.id}` ||
-        actionLoading === `message-${user.id}`
-      ) {
-        return actionLoading;
-      }
+  // On the Received tab show all invitations; elsewhere just a preview.
+  const visibleRequests =
+    activeTab === "received"
+      ? receivedRequests
+      : receivedRequests.slice(0, INVITATION_PREVIEW_COUNT);
 
-      return "";
-    },
-    [actionLoading]
-  );
+  // The same props for every person row.
+  const personRowProps = {
+    busyAction,
+    text,
+    onConnect: handleConnect,
+    onRequestAction: handleRequestAction,
+    onMessage: handleMessage,
+  };
 
-  // Filter users for search
-  const filteredUsers = useMemo(() => allUsers.filter((user) => {
-    const text = `${user.fullName} ${user.email} ${user.headline || ""} ${user.location || ""}`;
-    return text.toLowerCase().includes(searchTerm.toLowerCase());
-  }), [allUsers, searchTerm]);
+  if (isLoading) {
+    return (
+      <main className={ui.page}>
+        <p className="muted">{text("loading", "Loading...")}</p>
+      </main>
+    );
+  }
 
-  const filteredConnections = useMemo(() => connections.filter((user) => {
-    const text = `${user.fullName} ${user.email} ${user.headline || ""} ${user.location || ""}`;
-    return text.toLowerCase().includes(searchTerm.toLowerCase());
-  }), [connections, searchTerm]);
-
-  const visibleRequests = activeTab === "received" ? receivedRequests : receivedRequests.slice(0, 2);
-  const tabs: Tab[] = ["discover", "connections", "received", "sent"];
-
-  if (isLoading) return <div className="app-main"><div className="container">Loading...</div></div>;
+  const tabItems = TABS.map((tab) => ({ id: tab, label: tabLabel(tab), count: tabCounts[tab] }));
+  const showSearch = activeTab === "discover" || activeTab === "connections";
+  const showInvitationPreview =
+    receivedRequests.length > 0 && (activeTab === "discover" || activeTab === "connections");
 
   return (
-    <div className="app-main">
-      <div className="container">
-        <div className="network-layout">
-          <aside className="network-sidebar">
-            <div className="network-sidebar-card">
-              <h2>{ui.myNetwork || "My Network"}</h2>
-              <p>{ui.connectionIntro || "Build and manage your professional network."}</p>
+    <Page
+      title={text("myNetwork", "My network")}
+      subtitle={text("connectionIntro", "Grow your network and answer invitations.")}
+    >
+      <div className={ui.stack}>
+        {notice && <Notice>{notice}</Notice>}
 
-              <div className="network-summary-list">
-                {tabs.map((tab) => {
-                  const count =
-                    tab === "discover"
-                      ? allUsers.length
-                      : tab === "connections"
-                        ? connections.length
-                        : tab === "received"
-                          ? receivedRequests.length
-                          : sentRequests.length;
-
-                  return (
-                    <button
-                      type="button"
-                      key={tab}
-                      className={`network-summary-item ${activeTab === tab ? "active" : ""}`}
-                      onClick={() => setActiveTab(tab)}
-                    >
-                      <span>{getTabLabel(tab, ui)}</span>
-                      <strong>{count}</strong>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </aside>
-
-          <main className="network-content">
-            <div className="network-page-header">
-              <div>
-                <h1>{getTabLabel(activeTab, ui)}</h1>
-                <p className="muted">
-                  {activeTab === "discover" && "People you may want to connect with."}
-                  {activeTab === "connections" && "People already in your network."}
-                  {activeTab === "received" && "Invitations waiting for your response."}
-                  {activeTab === "sent" && "Invitations you have sent."}
-                </p>
-              </div>
-
-              <div className="network-header-stats">
-                <span>{connections.length} {ui.connections || "connections"}</span>
-                <span>{receivedRequests.length} pending</span>
-              </div>
-            </div>
-
-            {notice && <div className="notice-banner network-notice">{notice}</div>}
-
-            {receivedRequests.length > 0 && activeTab !== "sent" && (
-              <section className="network-section">
-                <div className="network-section-header">
-                  <div>
-                    <h2>{ui.connectionReceived || "Invitations"}</h2>
-                    <p>{receivedRequests.length} pending invitation{receivedRequests.length === 1 ? "" : "s"}</p>
-                  </div>
-                  {activeTab !== "received" && (
-                    <button
-                      type="button"
-                      className="btn-outline btn-sm"
-                      onClick={() => setActiveTab("received")}
-                    >
-                      Manage all
-                    </button>
-                  )}
-                </div>
-
-                <div className="connections-grid network-invitations-grid">
-                  {visibleRequests.map((req) => (
-                    <RequestCard
-                      key={req.id}
-                      request={req}
-                      direction="received"
-                      ui={ui}
-                      actionLoadingKey={
-                        actionLoading === `accept-${req.id}` ||
-                        actionLoading === `reject-${req.id}`
-                          ? actionLoading
-                          : ""
-                      }
-                      onAction={handleRequestAction}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {(activeTab === "discover" || activeTab === "connections") && (
-              <div className="network-search-card">
-                <input
-                  type="text"
-                  placeholder={ui.connectionSearchPlaceholder || "Search by name, headline, or location"}
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  className="search-input"
+        {/* Invitations come first: they're waiting for an answer. */}
+        {showInvitationPreview && (
+          <Panel
+            flush
+            title={
+              receivedRequests.length === 1
+                ? "1 person wants to connect"
+                : `${receivedRequests.length} people want to connect`
+            }
+            actions={
+              receivedRequests.length > INVITATION_PREVIEW_COUNT && (
+                <button type="button" className="btn-outline btn-sm" onClick={() => setActiveTab("received")}>
+                  See all
+                </button>
+              )
+            }
+          >
+            <ul className={ui.list}>
+              {visibleRequests.map((request) => (
+                <RequestRow
+                  key={request.id}
+                  request={request}
+                  direction="received"
+                  busyAction={busyAction}
+                  text={text}
+                  onAction={handleRequestAction}
                 />
-              </div>
+              ))}
+            </ul>
+          </Panel>
+        )}
+
+        <section className={`${ui.panel} ${ui.panelFlush}`} aria-label="People">
+          <div className={styles.toolbar}>
+            <Tabs items={tabItems} active={activeTab} onChange={setActiveTab} label="Network lists" />
+            {showSearch && (
+              <input
+                type="search"
+                className={styles.search}
+                placeholder={text("connectionSearchPlaceholder", "Search by name or city")}
+                aria-label="Search people"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+              />
             )}
+          </div>
 
-            {activeTab !== "received" && (
-            <section className="network-section">
-              <div className="network-section-header">
-                <div>
-                  <h2>{getTabLabel(activeTab, ui)}</h2>
-                  <p>
-                    {activeTab === "discover" && `${filteredUsers.length} profile${filteredUsers.length === 1 ? "" : "s"}`}
-                    {activeTab === "connections" && `${filteredConnections.length} connection${filteredConnections.length === 1 ? "" : "s"}`}
-                    {activeTab === "sent" && `${sentRequests.length} sent invitation${sentRequests.length === 1 ? "" : "s"}`}
-                  </p>
-                </div>
-              </div>
+          {activeTab === "discover" &&
+            (filteredUsers.length === 0 ? (
+              <EmptyState
+                icon={UserPlus}
+                title={searchTerm ? "No one matches your search" : "No one to suggest yet"}
+                text={searchTerm ? "Try a different name, job title or city." : "New members will show up here."}
+              />
+            ) : (
+              <ul className={ui.list}>
+                {filteredUsers.map((user) => (
+                  <PersonRow key={user.id} user={user} {...personRowProps} />
+                ))}
+              </ul>
+            ))}
 
-              {activeTab === "discover" && (
-                <div className="connections-grid">
-                  {filteredUsers.length === 0 ? (
-                    <EmptyNetworkState message="No people match your search." />
-                  ) : (
-                    filteredUsers.map((user) => (
-                      <UserCard
-                        key={user.id}
-                        user={user}
-                        ui={ui}
-                        actionLoadingKey={getUserActionLoadingKey(user)}
-                        onConnect={handleConnect}
-                        onRequestAction={handleRequestAction}
-                        onMessage={handleMessage}
-                        onViewProfile={handleViewProfile}
-                      />
-                    ))
-                  )}
-                </div>
-              )}
+          {activeTab === "connections" &&
+            (filteredConnections.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title={searchTerm ? "No connections match your search" : "No connections yet"}
+                text="Connect with people from Discover. Once they accept, they appear here."
+                action={
+                  !searchTerm && (
+                    <button type="button" className="btn-primary" onClick={() => setActiveTab("discover")}>
+                      Find people
+                    </button>
+                  )
+                }
+              />
+            ) : (
+              <ul className={ui.list}>
+                {filteredConnections.map((user) => (
+                  <PersonRow key={user.id} user={user} {...personRowProps} />
+                ))}
+              </ul>
+            ))}
 
-              {activeTab === "connections" && (
-                <div className="connections-grid">
-                  {filteredConnections.length === 0 ? (
-                    <EmptyNetworkState message="No connections found." />
-                  ) : (
-                    filteredConnections.map((user) => (
-                      <UserCard
-                        key={user.id}
-                        user={user}
-                        ui={ui}
-                        actionLoadingKey={getUserActionLoadingKey(user)}
-                        onConnect={handleConnect}
-                        onRequestAction={handleRequestAction}
-                        onMessage={handleMessage}
-                        onViewProfile={handleViewProfile}
-                      />
-                    ))
-                  )}
-                </div>
-              )}
+          {activeTab === "received" &&
+            (receivedRequests.length === 0 ? (
+              <EmptyState
+                icon={Inbox}
+                title="No invitations right now"
+                text="When someone asks to connect, you can accept or ignore it here."
+              />
+            ) : (
+              <ul className={ui.list}>
+                {receivedRequests.map((request) => (
+                  <RequestRow
+                    key={request.id}
+                    request={request}
+                    direction="received"
+                    busyAction={busyAction}
+                    text={text}
+                    onAction={handleRequestAction}
+                  />
+                ))}
+              </ul>
+            ))}
 
-              {activeTab === "sent" && (
-                <div className="connections-grid">
-                  {sentRequests.length === 0 ? (
-                    <EmptyNetworkState message="No sent invitations." />
-                  ) : (
-                    sentRequests.map((req) => (
-                      <RequestCard
-                        key={req.id}
-                        request={req}
-                        direction="sent"
-                        ui={ui}
-                        actionLoadingKey=""
-                        onAction={handleRequestAction}
-                      />
-                    ))
-                  )}
-                </div>
-              )}
-            </section>
-            )}
-          </main>
-        </div>
+          {activeTab === "sent" &&
+            (sentRequests.length === 0 ? (
+              <EmptyState
+                icon={Send}
+                title="You haven't sent any requests"
+                text="Requests you send from Discover appear here with their status."
+              />
+            ) : (
+              <ul className={ui.list}>
+                {sentRequests.map((request) => (
+                  <RequestRow
+                    key={request.id}
+                    request={request}
+                    direction="sent"
+                    busyAction={busyAction}
+                    text={text}
+                    onAction={handleRequestAction}
+                  />
+                ))}
+              </ul>
+            ))}
+        </section>
       </div>
-    </div>
+    </Page>
   );
 }

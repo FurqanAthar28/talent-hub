@@ -1,21 +1,14 @@
+import { ui } from "@/app/components/ui";
 import type { RecruiterCandidate } from "@/app/services/recruiter/candidates";
 import CandidateCard from "./CandidateCard";
 
-type CandidateGridProps = {
-  candidates: RecruiterCandidate[];
-};
-
-export default function CandidateGrid({
-  candidates,
-}: CandidateGridProps) {
+/** The list of results. (Rows are quicker to scan than a grid of cards.) */
+export default function CandidateGrid({ candidates }: { candidates: RecruiterCandidate[] }) {
   return (
-    <section className="ats-candidate-grid">
+    <ul className={ui.list}>
       {candidates.map((candidate) => (
-        <CandidateCard
-          key={candidate.id}
-          candidate={candidate}
-        />
+        <CandidateCard key={candidate.id} candidate={candidate} />
       ))}
-    </section>
+    </ul>
   );
 }

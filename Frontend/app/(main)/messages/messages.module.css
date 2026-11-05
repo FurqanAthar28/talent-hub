@@ -1,0 +1,358 @@
+/*
+ * Messages page.
+ * Big screens: [ chat list | open chat | about the person ]
+ * Phones:      ONE part at a time: the chat list, or the open chat
+ *              (with a Back button). `data-view` on .layout says which.
+ */
+
+.layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr) 280px;
+  height: calc(100vh - 210px);
+  min-height: 480px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--card-color);
+  overflow: hidden;
+}
+
+/* ---------- Left: the chat list ---------- */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border-color);
+}
+
+.sidebarHeader {
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.search {
+  width: 100%;
+  height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-light);
+  font-size: 14px;
+}
+
+.search:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+  background: var(--card-color);
+}
+
+.conversationList {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.conversation {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: none;
+  text-align: left;
+  color: var(--text-primary);
+}
+
+.conversation:hover {
+  background: var(--bg-light);
+}
+
+.conversationActive {
+  background: var(--primary-light);
+  border-left-color: var(--primary-color);
+}
+
+.conversationActive:hover {
+  background: var(--primary-light);
+}
+
+.conversationMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.conversationTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.conversationName {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversationTime {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.conversationBottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.conversationPreview {
+  color: var(--text-secondary);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unread .conversationPreview {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.unreadCount {
+  flex-shrink: 0;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--primary-color);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+}
+
+/* ---------- Middle: the open chat ---------- */
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.threadHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.threadPerson {
+  flex: 1;
+  min-width: 0;
+}
+
+.threadName {
+  display: block;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.threadHeadline {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backButton {
+  display: none; /* only on phones */
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-primary);
+}
+
+.backButton:hover {
+  background: var(--bg-light);
+}
+
+.messageList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-light);
+}
+
+.bubbleRow {
+  display: flex;
+}
+
+.bubbleRowMine {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: min(75%, 520px);
+  padding: 10px 14px;
+  border-radius: 14px 14px 14px 4px;
+  background: var(--card-color);
+  border: 1px solid var(--border-color);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bubbleMine {
+  border-radius: 14px 14px 4px 14px;
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+}
+
+.bubbleTime {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.bubbleMine .bubbleTime {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.composerInput {
+  flex: 1;
+  min-height: 42px;
+  max-height: 140px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+  resize: none;
+}
+
+.composerInput:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.sendButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 42px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--primary-color);
+  color: #fff;
+  font-weight: 600;
+}
+
+.sendButton:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.centered {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+/* ---------- Right: about the person ---------- */
+
+.details {
+  padding: 24px 20px;
+  border-left: 1px solid var(--border-color);
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.detailsName {
+  margin-top: 10px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.detailsHeadline {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.detailsActions {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  margin-top: 16px;
+}
+
+.detailsActions a {
+  text-align: center;
+}
+
+/* ---------- Medium screens: no right column ---------- */
+
+@media (max-width: 1200px) {
+  .layout {
+    grid-template-columns: 300px minmax(0, 1fr);
+  }
+
+  .details {
+    display: none;
+  }
+}
+
+/* ---------- Phones: one part at a time ---------- */
+
+@media (max-width: 760px) {
+  .layout {
+    grid-template-columns: 1fr;
+    height: calc(100vh - 230px);
+  }
+
+  .layout[data-view="list"] .thread,
+  .layout[data-view="thread"] .sidebar {
+    display: none;
+  }
+
+  .sidebar {
+    border-right: 0;
+  }
+
+  .backButton {
+    display: grid;
+  }
+
+  .bubble {
+    max-width: 85%;
+  }
+}

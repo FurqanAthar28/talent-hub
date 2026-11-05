@@ -1,374 +1,300 @@
-from rest_framework import serializers
-from django.contrib.auth.models import User
+"""
+Serializers for the accounts app.
 
-from profiles.constants import MAX_CV_FILE_SIZE_BYTES
+A serializer is a "form checker" for the API. It takes the JSON (or form
+data) the browser sent, checks every field, and gives the view clean,
+safe values in `serializer.validated_data`. If something is wrong, it
+fills `serializer.errors` instead.
+
+WHAT'S IN THIS FILE
+1. Messages and reusable fields
+2. Sign-up                 (SignupSerializer)
+3. Sign-in                 (SigninSerializer)
+4. Email verification      (EmailVerification...Serializer)
+5. Password reset          (PasswordReset...Serializer)
+6. Delete my account       (DeleteAccountSerializer)
+"""
+
+from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError, transaction
+from rest_framework import serializers
+
 from profiles.models import Profile
 from profiles.pdf_metadata import apply_cv_pdf_metadata
 from profiles.url_utils import normalize_url
+from profiles.validators import validate_cv_file
 
-from .models import AdminActionLog
 
+# =============================================================================
+# 1. MESSAGES AND REUSABLE FIELDS
+# =============================================================================
 
 VALIDATION_MESSAGES = {
     "email_exists": "Email already exists",
-    "pdf_only": "Only PDF files are accepted",
-    "cv_too_large": "CV file must be less than 5MB",
     "cv_required": "CV file is required",
     "linkedin_required": "LinkedIn profile is required",
     "company_name_required": "Company name is required",
-    "otp_digits_only": "OTP must contain only numbers",
+    "otp_format": "OTP must be exactly 6 numbers",
 }
 
+# Database limits. Sending more than this would crash the save,
+# so we stop it here with a friendly message instead.
+NAME_MAX_LENGTH = 150  # Django's first_name / last_name limit
+TEXT_MAX_LENGTH = 255  # company name, location, hiring title
+URL_MAX_LENGTH = 200  # Django's URLField limit
 
-def get_user_profile(user):
+
+class LowercaseEmailField(serializers.EmailField):
+    """
+    An email field that always gives back lower-case text.
+    "Ali@Example.COM" -> "ali@example.com", so one person can't
+    end up with two accounts just by typing capital letters.
+    """
+
+    def to_internal_value(self, data):
+        return super().to_internal_value(data).lower()
+
+
+class OtpField(serializers.RegexField):
+    """
+    A 6-digit code field. The pattern ^\\d{6}$ means
+    "exactly 6 numbers, nothing before, nothing after".
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(
+            regex=r"^\d{6}$",
+            error_messages={"invalid": VALIDATION_MESSAGES["otp_format"]},
+            **kwargs,
+        )
+
+
+def check_password_rules(password, user=None):
+    """
+    Check a new password against the rules in settings.AUTH_PASSWORD_VALIDATORS
+    (at least 8 characters, not too common, not only numbers, not too
+    similar to the user's name or email).
+    """
     try:
-        return user.profile
-    except Profile.DoesNotExist:
-        return None
+        validate_password(password, user=user)
+    except DjangoValidationError as error:
+        # Django gives a list of problems. DRF wants them as its own error type.
+        raise serializers.ValidationError(list(error.messages)) from None
 
 
 def split_full_name(full_name):
-    name_parts = full_name.strip().split(" ", 1)
-    first_name = name_parts[0]
-    last_name = name_parts[1] if len(name_parts) > 1 else ""
-
+    """
+    "Ali Raza Khan" -> ("Ali", "Raza Khan")
+    "Ali"           -> ("Ali", "")
+    split(maxsplit=1) also handles extra spaces: "Ali   Khan" -> ("Ali", "Khan").
+    """
+    parts = full_name.split(maxsplit=1)
+    first_name = parts[0] if parts else ""
+    last_name = parts[1] if len(parts) > 1 else ""
     return first_name, last_name
 
 
-def create_user_account(full_name, email, password):
-    first_name, last_name = split_full_name(full_name)
-
-    return User.objects.create_user(
-        username=email,
-        email=email,
-        password=password,
-        first_name=first_name,
-        last_name=last_name,
-    )
-
-
-def prepare_cv_file(cv_file, full_name):
-    if not cv_file:
-        return None
-
-    return apply_cv_pdf_metadata(cv_file, full_name)
-
-
-def create_user_profile(user, validated_data, cv_file):
-    role = validated_data["role"]
-
-    return Profile.objects.create(
-        user=user,
-        role=role,
-        linkedin_url=validated_data.get("linkedinUrl", ""),
-        company_name=validated_data.get("companyName", ""),
-        company_website=validated_data.get("companyWebsite", ""),
-        company_location=validated_data.get("companyLocation", ""),
-        hiring_title=validated_data.get("hiringTitle", ""),
-        recruiter_verification_status=(
-            Profile.RECRUITER_VERIFICATION_PENDING
-            if role == Profile.ROLE_RECRUITER
-            else Profile.RECRUITER_VERIFICATION_APPROVED
-        ),
-        cv_file=cv_file,
-    )
+# =============================================================================
+# 2. SIGN-UP
+# =============================================================================
 
 
 class SignupSerializer(serializers.Serializer):
-    ROLE_CHOICES = ("candidate", "recruiter")
+    """
+    Checks the sign-up form and creates the user + profile.
 
-    fullName = serializers.CharField()
-    email = serializers.EmailField()
-    password = serializers.CharField(write_only=True, min_length=6)
-    role = serializers.ChoiceField(choices=ROLE_CHOICES, default="candidate")
-    linkedinUrl = serializers.CharField(required=False, allow_blank=True)
-    companyName = serializers.CharField(required=False, allow_blank=True)
-    companyWebsite = serializers.CharField(required=False, allow_blank=True)
-    companyLocation = serializers.CharField(required=False, allow_blank=True)
-    hiringTitle = serializers.CharField(required=False, allow_blank=True)
+    Candidates must send a CV (PDF) and a LinkedIn URL.
+    Recruiters must send a company name.
+    """
+
+    fullName = serializers.CharField(max_length=NAME_MAX_LENGTH)
+    email = LowercaseEmailField()
+    password = serializers.CharField(write_only=True)
+    role = serializers.ChoiceField(
+        choices=[Profile.ROLE_CANDIDATE, Profile.ROLE_RECRUITER],
+        default=Profile.ROLE_CANDIDATE,
+    )
+    linkedinUrl = serializers.CharField(
+        required=False, allow_blank=True, max_length=URL_MAX_LENGTH
+    )
+    companyName = serializers.CharField(
+        required=False, allow_blank=True, max_length=TEXT_MAX_LENGTH
+    )
+    companyWebsite = serializers.CharField(
+        required=False, allow_blank=True, max_length=URL_MAX_LENGTH
+    )
+    companyLocation = serializers.CharField(
+        required=False, allow_blank=True, max_length=TEXT_MAX_LENGTH
+    )
+    hiringTitle = serializers.CharField(
+        required=False, allow_blank=True, max_length=TEXT_MAX_LENGTH
+    )
     cvFile = serializers.FileField(required=False)
 
+    # ----- Checks for single fields (DRF runs "validate_<field name>") -----
+
     def validate_email(self, value):
-        email = value.lower()
-
-        if User.objects.filter(email=email).exists():
+        if User.objects.filter(email__iexact=value).exists():
             raise serializers.ValidationError(VALIDATION_MESSAGES["email_exists"])
-
-        return email
-
-    def validate_cvFile(self, value):
-        if value.content_type != "application/pdf":
-            raise serializers.ValidationError(VALIDATION_MESSAGES["pdf_only"])
-
-        if value.size > MAX_CV_FILE_SIZE_BYTES:
-            raise serializers.ValidationError(VALIDATION_MESSAGES["cv_too_large"])
-
         return value
 
+    def validate_cvFile(self, value):
+        # Same PDF + size check as the profile edit page (profiles/validators.py).
+        return validate_cv_file(value)
+
     def validate_linkedinUrl(self, value):
+        # normalize_url adds "https://" if missing and checks it's a real URL.
         return normalize_url(value)
 
     def validate_companyWebsite(self, value):
         return normalize_url(value)
 
+    # ----- Checks that need more than one field -----
+
     def validate(self, attrs):
-        role = attrs.get("role", Profile.ROLE_CANDIDATE)
+        role = attrs["role"]
 
-        if role == Profile.ROLE_CANDIDATE and not attrs.get("cvFile"):
-            raise serializers.ValidationError(
-                {"cvFile": VALIDATION_MESSAGES["cv_required"]}
-            )
+        if role == Profile.ROLE_CANDIDATE:
+            if not attrs.get("cvFile"):
+                raise serializers.ValidationError(
+                    {"cvFile": VALIDATION_MESSAGES["cv_required"]}
+                )
+            if not attrs.get("linkedinUrl"):
+                raise serializers.ValidationError(
+                    {"linkedinUrl": VALIDATION_MESSAGES["linkedin_required"]}
+                )
 
-        if role == Profile.ROLE_CANDIDATE and not attrs.get("linkedinUrl", "").strip():
-            raise serializers.ValidationError(
-                {"linkedinUrl": VALIDATION_MESSAGES["linkedin_required"]}
-            )
-
-        if role == Profile.ROLE_RECRUITER and not attrs.get("companyName", "").strip():
+        if role == Profile.ROLE_RECRUITER and not attrs.get("companyName"):
             raise serializers.ValidationError(
                 {"companyName": VALIDATION_MESSAGES["company_name_required"]}
             )
 
+        # Check the password here (not in validate_password) because the
+        # "not too similar to your name/email" rule needs the name and email.
+        # This User is only for the check. It is NOT saved.
+        first_name, last_name = split_full_name(attrs["fullName"])
+        user_for_check = User(
+            username=attrs["email"],
+            email=attrs["email"],
+            first_name=first_name,
+            last_name=last_name,
+        )
+        try:
+            check_password_rules(attrs["password"], user=user_for_check)
+        except serializers.ValidationError as error:
+            raise serializers.ValidationError({"password": error.detail}) from None
+
         return attrs
 
-    def create(self, validated_data):
-        full_name = validated_data["fullName"].strip()
-        email = validated_data["email"]
-        password = validated_data["password"]
+    # ----- Saving -----
 
-        user = create_user_account(full_name, email, password)
-        cv_file = prepare_cv_file(validated_data.get("cvFile"), full_name)
-        create_user_profile(user, validated_data, cv_file)
+    def create(self, validated_data):
+        """Make the user and their profile. Both start "not verified"."""
+        full_name = validated_data["fullName"]
+        email = validated_data["email"]
+        role = validated_data["role"]
+        first_name, last_name = split_full_name(full_name)
+
+        # Put the person's name inside the PDF's details (title, author).
+        cv_file = validated_data.get("cvFile")
+        if cv_file:
+            cv_file = apply_cv_pdf_metadata(cv_file, full_name)
+
+        # Recruiters must be approved by an admin. Candidates don't.
+        if role == Profile.ROLE_RECRUITER:
+            verification_status = Profile.RECRUITER_VERIFICATION_PENDING
+        else:
+            verification_status = Profile.RECRUITER_VERIFICATION_APPROVED
+
+        try:
+            # atomic = save BOTH the user and the profile, or NEITHER.
+            # We never want a user without a profile.
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    username=email,
+                    email=email,
+                    password=validated_data["password"],
+                    first_name=first_name,
+                    last_name=last_name,
+                    # Switched off until they type the code from their email.
+                    is_active=False,
+                )
+                Profile.objects.create(
+                    user=user,
+                    role=role,
+                    email_verified=False,
+                    linkedin_url=validated_data.get("linkedinUrl", ""),
+                    company_name=validated_data.get("companyName", ""),
+                    company_website=validated_data.get("companyWebsite", ""),
+                    company_location=validated_data.get("companyLocation", ""),
+                    hiring_title=validated_data.get("hiringTitle", ""),
+                    recruiter_verification_status=verification_status,
+                    cv_file=cv_file,
+                )
+        except IntegrityError:
+            # Two sign-ups with the same email at the same moment:
+            # validate_email passed for both, but the database allows only one.
+            raise serializers.ValidationError(
+                {"email": [VALIDATION_MESSAGES["email_exists"]]}
+            ) from None
 
         return user
 
 
+# =============================================================================
+# 3. SIGN-IN
+# =============================================================================
+
+
 class SigninSerializer(serializers.Serializer):
-    email = serializers.EmailField()
+    email = LowercaseEmailField()
+    # No password rules here: we only compare it with the saved password.
     password = serializers.CharField(write_only=True)
 
-    def validate_email(self, value):
-        return value.lower()
 
-
-class PasswordResetRequestSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-
-    def validate_email(self, value):
-        return value.lower()
-
-
-class PasswordResetConfirmSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    otp = serializers.CharField(min_length=6, max_length=6)
-    password = serializers.CharField(write_only=True, min_length=6)
-
-    def validate_email(self, value):
-        return value.lower()
-
-    def validate_otp(self, value):
-        if not value.isdigit():
-            raise serializers.ValidationError(VALIDATION_MESSAGES["otp_digits_only"])
-
-        return value
+# =============================================================================
+# 4. EMAIL VERIFICATION
+# =============================================================================
 
 
 class EmailVerificationRequestSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-
-    def validate_email(self, value):
-        return value.lower()
+    email = LowercaseEmailField()
 
 
 class EmailVerificationConfirmSerializer(serializers.Serializer):
-    email = serializers.EmailField()
-    otp = serializers.CharField(min_length=6, max_length=6)
+    email = LowercaseEmailField()
+    otp = OtpField()
 
-    def validate_email(self, value):
-        return value.lower()
 
-    def validate_otp(self, value):
-        if not value.isdigit():
-            raise serializers.ValidationError(VALIDATION_MESSAGES["otp_digits_only"])
+# =============================================================================
+# 5. PASSWORD RESET
+# =============================================================================
 
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = LowercaseEmailField()
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    email = LowercaseEmailField()
+    otp = OtpField()
+    password = serializers.CharField(write_only=True)
+
+    def validate_password(self, value):
+        # Same rules as sign-up. (We don't know the user yet here, so the
+        # "similar to your name" rule is skipped. The others still apply.)
+        check_password_rules(value)
         return value
 
 
-class RecruiterVerificationSerializer(serializers.Serializer):
-    status = serializers.ChoiceField(
-        choices=[
-            Profile.RECRUITER_VERIFICATION_APPROVED,
-            Profile.RECRUITER_VERIFICATION_REJECTED,
-        ]
-    )
-    note = serializers.CharField(required=False, allow_blank=True, max_length=255)
+# =============================================================================
+# 6. DELETE MY ACCOUNT
+# =============================================================================
 
 
-class AdminUserSerializer(serializers.ModelSerializer):
-    fullName = serializers.SerializerMethodField()
-    role = serializers.SerializerMethodField()
-    profileCompletion = serializers.SerializerMethodField()
-    skillsCount = serializers.SerializerMethodField()
-    projectsCount = serializers.SerializerMethodField()
-    experiencesCount = serializers.SerializerMethodField()
-    connectionsCount = serializers.SerializerMethodField()
-    recruiterVerificationStatus = serializers.SerializerMethodField()
-    recruiterVerificationNote = serializers.SerializerMethodField()
-
-    class Meta:
-        model = User
-        fields = [
-            "id",
-            "email",
-            "username",
-            "fullName",
-            "role",
-            "is_active",
-            "is_staff",
-            "date_joined",
-            "last_login",
-            "profileCompletion",
-            "skillsCount",
-            "projectsCount",
-            "experiencesCount",
-            "connectionsCount",
-            "recruiterVerificationStatus",
-            "recruiterVerificationNote",
-        ]
-
-    def get_fullName(self, obj):
-        return obj.get_full_name() or obj.email
-
-    def get_role(self, obj):
-        if obj.is_staff:
-            return Profile.ROLE_ADMIN
-
-        profile = get_user_profile(obj)
-        return profile.role if profile else Profile.ROLE_CANDIDATE
-
-    def get_profileCompletion(self, obj):
-        profile = get_user_profile(obj)
-
-        if not profile:
-            return 0
-
-        missing_fields = []
-
-        if not obj.get_full_name():
-            missing_fields.append("full_name")
-
-        if profile.role == Profile.ROLE_ADMIN:
-            if not profile.admin_title:
-                missing_fields.append("admin_title")
-
-            total_fields = 2
-            completed_fields = max(total_fields - len(missing_fields), 0)
-            return int((completed_fields / total_fields) * 100)
-
-        if profile.role == Profile.ROLE_RECRUITER:
-            if not profile.headline:
-                missing_fields.append("headline")
-
-            if not profile.company_name:
-                missing_fields.append("company_name")
-
-            if not profile.hiring_title:
-                missing_fields.append("hiring_title")
-
-            if not profile.company_website:
-                missing_fields.append("company_website")
-
-            total_fields = 5
-            completed_fields = max(total_fields - len(missing_fields), 0)
-            return int((completed_fields / total_fields) * 100)
-
-        if not profile.headline:
-            missing_fields.append("headline")
-
-        if not profile.location:
-            missing_fields.append("location")
-
-        if not profile.bio:
-            missing_fields.append("bio")
-
-        if not profile.linkedin_url:
-            missing_fields.append("linkedin_url")
-
-        if not profile.cv_file:
-            missing_fields.append("cv_file")
-
-        if self.get_skillsCount(obj) == 0:
-            missing_fields.append("skills")
-
-        if self.get_projectsCount(obj) == 0:
-            missing_fields.append("projects")
-
-        if self.get_experiencesCount(obj) == 0:
-            missing_fields.append("experiences")
-
-        total_fields = 9
-        completed_fields = max(total_fields - len(missing_fields), 0)
-
-        return int((completed_fields / total_fields) * 100)
-
-    def get_skillsCount(self, obj):
-        return getattr(obj, "skills_count", 0)
-
-    def get_projectsCount(self, obj):
-        return getattr(obj, "projects_count", 0)
-
-    def get_experiencesCount(self, obj):
-        return getattr(obj, "experiences_count", 0)
-
-    def get_connectionsCount(self, obj):
-        return getattr(obj, "connections_count", 0)
-
-    def get_recruiterVerificationStatus(self, obj):
-        profile = get_user_profile(obj)
-        return (
-            profile.recruiter_verification_status
-            if profile
-            else Profile.RECRUITER_VERIFICATION_APPROVED
-        )
-
-    def get_recruiterVerificationNote(self, obj):
-        profile = get_user_profile(obj)
-        return profile.recruiter_verification_note if profile else ""
-
-
-class AdminActionLogSerializer(serializers.ModelSerializer):
-    actorName = serializers.SerializerMethodField()
-    actorEmail = serializers.EmailField(source="actor.email", read_only=True)
-    targetUserName = serializers.SerializerMethodField()
-    targetUserEmail = serializers.EmailField(source="target_user.email", read_only=True)
-    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
-
-    class Meta:
-        model = AdminActionLog
-        fields = [
-            "id",
-            "actorName",
-            "actorEmail",
-            "targetUserName",
-            "targetUserEmail",
-            "action",
-            "description",
-            "metadata",
-            "createdAt",
-        ]
-
-    def get_actorName(self, obj):
-        if not obj.actor:
-            return "System"
-
-        return obj.actor.get_full_name() or obj.actor.email or obj.actor.username
-
-    def get_targetUserName(self, obj):
-        if not obj.target_user:
-            return ""
-
-        return (
-            obj.target_user.get_full_name()
-            or obj.target_user.email
-            or obj.target_user.username
-        )
+class DeleteAccountSerializer(serializers.Serializer):
+    # The user must type their password again, so a mis-click or a
+    # borrowed laptop can't delete the account.
+    password = serializers.CharField(write_only=True)

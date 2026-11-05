@@ -1,5 +1,12 @@
-import { apiFetch } from "../api/client";
-import type { UiContent } from "../api/ui-content";
+/**
+ * Talking to Django about chats ("conversations") and their messages.
+ * Each function throws an Error with Django's own message when something
+ * goes wrong, so the page can simply show `error.message`.
+ */
+
+import { apiFetch, getApiMessage, readJson } from "../api/client";
+import { API_ROUTES } from "../config/apiRoutes";
+import { MESSAGES } from "../config/messages";
 
 export type Conversation = {
   id: number;
@@ -24,76 +31,52 @@ export type Message = {
   created_at: string;
 };
 
-type ApiMessageResponse = {
-  message?: string;
-};
+/** Stop with Django's message (or the fallback) when the request failed. */
+async function throwIfFailed(response: Response, fallback: string) {
+  if (response.ok) return;
 
-export async function readMessageApiError(response: Response, fallback: string) {
-  try {
-    const data = (await response.json()) as ApiMessageResponse;
-    return data.message || fallback;
-  } catch (error) {
-    console.error("Failed to read message API error:", error);
-    return fallback;
-  }
+  const data = await readJson(response);
+  throw new Error(getApiMessage(data) || fallback);
 }
 
-export async function fetchConversations(uiContent: UiContent) {
-  const response = await apiFetch(uiContent.apiConversations);
-
-  if (!response.ok) {
-    throw new Error(uiContent.messageUnableToLoad);
-  }
+/** All my chats, newest first. */
+export async function fetchConversations(): Promise<Conversation[]> {
+  const response = await apiFetch(API_ROUTES.CONNECTIONS.CONVERSATIONS);
+  await throwIfFailed(response, MESSAGES.MESSAGES.LOAD_FAILED);
 
   return (await response.json()) as Conversation[];
 }
 
-export async function startConversation(uiContent: UiContent, userId: number) {
-  const response = await apiFetch(uiContent.apiStartConversation, {
+/** Open (or re-open) a chat with one of my connections. */
+export async function startConversation(userId: number): Promise<Conversation> {
+  const response = await apiFetch(API_ROUTES.CONNECTIONS.START_CONVERSATION, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ userId }),
   });
-
-  if (!response.ok) {
-    throw new Error(await readMessageApiError(response, uiContent.messageStartFailed));
-  }
+  await throwIfFailed(response, MESSAGES.MESSAGES.START_FAILED);
 
   return (await response.json()) as Conversation;
 }
 
-export async function fetchConversationMessages(
-  uiContent: UiContent,
-  conversationId: number
-) {
-  const response = await apiFetch(
-    `${uiContent.apiConversations}/${conversationId}${uiContent.apiConversationMessagesSuffix}`
-  );
-
-  if (!response.ok) {
-    throw new Error(uiContent.messageUnableToLoad);
-  }
+/** Every message in one chat. (Django also marks the other person's as read.) */
+export async function fetchConversationMessages(conversationId: number): Promise<Message[]> {
+  const response = await apiFetch(API_ROUTES.CONNECTIONS.CONVERSATION_MESSAGES(conversationId));
+  await throwIfFailed(response, MESSAGES.MESSAGES.LOAD_FAILED);
 
   return (await response.json()) as Message[];
 }
 
 export async function sendConversationMessage(
-  uiContent: UiContent,
   conversationId: number,
   body: string
-) {
-  const response = await apiFetch(
-    `${uiContent.apiConversations}/${conversationId}${uiContent.apiConversationMessagesSuffix}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(await readMessageApiError(response, uiContent.messageUnableToSend));
-  }
+): Promise<Message> {
+  const response = await apiFetch(API_ROUTES.CONNECTIONS.CONVERSATION_MESSAGES(conversationId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ body }),
+  });
+  await throwIfFailed(response, MESSAGES.MESSAGES.SEND_FAILED);
 
   return (await response.json()) as Message;
 }

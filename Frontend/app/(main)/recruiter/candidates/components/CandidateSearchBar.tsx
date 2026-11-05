@@ -1,24 +1,22 @@
+import styles from "../candidates.module.css";
+
 type CandidateSearchBarProps = {
   searchQuery: string;
   onSearchChange: (value: string) => void;
 };
 
-export default function CandidateSearchBar({
-  searchQuery,
-  onSearchChange,
-}: CandidateSearchBarProps) {
+/** The main search box: name, headline, city, bio or a skill. */
+export default function CandidateSearchBar({ searchQuery, onSearchChange }: CandidateSearchBarProps) {
   return (
-    <section className="dashboard-section">
-      <div className="form-group">
-        <label htmlFor="candidate-search">Search candidates</label>
-        <input
-          id="candidate-search"
-          type="search"
-          value={searchQuery}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search candidates..."
-        />
-      </div>
-    </section>
+    <label className={styles.field}>
+      <span className={styles.fieldLabel}>Search</span>
+      <input
+        type="search"
+        className={`${styles.input} ${styles.inputSearch}`}
+        value={searchQuery}
+        onChange={(event) => onSearchChange(event.target.value)}
+        placeholder="Name, job title, city or skill"
+      />
+    </label>
   );
 }

@@ -1,118 +1,61 @@
-import { apiFetch } from "../api/client";
+/**
+ * Everything the dashboard shows comes from these functions.
+ */
 
-export type DashboardData = {
-  role: string;
-  fullName: string;
-  headline: string;
-  profileCompletion: number;
-  openToWork: boolean;
-  skillsCount: number;
-  projectsCount: number;
-  experiencesCount: number;
-};
+import { apiFetch, getApiMessage, readJson } from "../api/client";
+import { API_ROUTES } from "../config/apiRoutes";
+import type { Profile } from "./profiles";
 
-export type RecruiterDashboardData = {
-  availableProfessionalsCount: number;
-  myConnectionsCount: number;
+/** What the recruiter dashboard shows. Django counts these for us. */
+export type RecruiterSummary = {
+  candidatesCount: number;
+  connectionsCount: number;
   pendingRequestsCount: number;
 };
 
-export type AdminDashboardData = {
-  totalUsers: number;
-  activeUsers: number;
-  recruiters: number;
-  totalConnections: number;
+/** One line of "recent activity", e.g. "Added skill: Django". */
+export type Activity = {
+  id: number;
+  title: string;
+  created_at: string;
 };
 
-type ProfileDashboardResponse = {
-  role?: string;
-  fullName?: string;
-  headline?: string;
-  profileCompletion?: number;
-  openToWork?: boolean;
-  skillsCount?: number;
-  projectsCount?: number;
-  experiencesCount?: number;
-};
+/** Stop with Django's message (or the fallback) when the request failed. */
+async function throwIfFailed(response: Response, fallback: string) {
+  if (response.ok) return;
 
-async function readJson<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    throw new Error("Failed to load dashboard data.");
+  const data = await readJson(response);
+  throw new Error(getApiMessage(data) || fallback);
+}
+
+/** My profile, with the counts and the checklist the dashboard needs. */
+export async function getDashboardData(): Promise<Profile> {
+  const response = await apiFetch(API_ROUTES.PROFILES.ME);
+  await throwIfFailed(response, "Unable to load your dashboard.");
+
+  return (await response.json()) as Profile;
+}
+
+/** My 10 newest activity lines. An empty list if they can't be loaded. */
+export async function getRecentActivity(): Promise<Activity[]> {
+  try {
+    const response = await apiFetch(API_ROUTES.PROFILES.ACTIVITIES);
+    if (!response.ok) return [];
+
+    const data: unknown = await response.json();
+    return Array.isArray(data) ? (data as Activity[]) : [];
+  } catch {
+    return []; // the dashboard still works without it
   }
-
-  return response.json();
 }
 
-function getArrayLength(data: unknown): number {
-  if (Array.isArray(data)) return data.length;
+/**
+ * One small request for 3 numbers.
+ * (Before, we downloaded every user, connection and request just to count them.)
+ */
+export async function getRecruiterSummary(): Promise<RecruiterSummary> {
+  const response = await apiFetch(API_ROUTES.RECRUITER.SUMMARY);
+  await throwIfFailed(response, "Unable to load your recruiter numbers.");
 
-  if (
-    data &&
-    typeof data === "object" &&
-    "results" in data &&
-    Array.isArray((data as { results: unknown[] }).results)
-  ) {
-    return (data as { results: unknown[] }).results.length;
-  }
-
-  return 0;
-}
-
-export async function getDashboardData(): Promise<DashboardData> {
-  const response = await apiFetch("/profiles/me/");
-  const profile = await readJson<ProfileDashboardResponse>(response);
-
-  return {
-    fullName: profile.fullName || "User",
-    headline: profile.headline || "Manage your professional profile.",
-    role: profile.role || "candidate",
-    profileCompletion: profile.profileCompletion ?? 0,
-    openToWork: profile.openToWork ?? false,
-    skillsCount: profile.skillsCount ?? 0,
-    projectsCount: profile.projectsCount ?? 0,
-    experiencesCount: profile.experiencesCount ?? 0,
-  };
-}
-
-export async function getRecruiterDashboardData(): Promise<RecruiterDashboardData> {
-  const [usersRes, connectionsRes, pendingRes] = await Promise.all([
-    apiFetch("/connections/users/"),
-    apiFetch("/connections/my-connections/"),
-    apiFetch("/connections/pending/"),
-  ]);
-
-  const users = await readJson<unknown>(usersRes);
-  const connections = await readJson<unknown>(connectionsRes);
-  const pending = await readJson<unknown>(pendingRes);
-
-  return {
-    availableProfessionalsCount: getArrayLength(users),
-    myConnectionsCount: getArrayLength(connections),
-    pendingRequestsCount: getArrayLength(pending),
-  };
-}
-
-export async function getAdminDashboardData(): Promise<AdminDashboardData> {
-  const [statsRes, connectionsRes] = await Promise.all([
-    apiFetch("/accounts/admin/stats/", undefined, {
-      redirectOnUnauthorized: false,
-    }),
-    apiFetch("/connections/admin/connections/", undefined, {
-      redirectOnUnauthorized: false,
-    }),
-  ]);
-
-  const stats = statsRes.ok ? await statsRes.json() : {};
-  const connections = connectionsRes.ok ? await connectionsRes.json() : [];
-
-  return {
-    totalUsers: stats.totalUsers ?? stats.total_users ?? 0,
-    activeUsers: stats.activeUsers ?? stats.active_users ?? 0,
-    recruiters:
-      stats.recruiters ?? stats.totalRecruiters ?? stats.total_recruiters ?? 0,
-    totalConnections:
-      stats.totalConnections ??
-      stats.total_connections ??
-      getArrayLength(connections),
-  };
+  return (await response.json()) as RecruiterSummary;
 }

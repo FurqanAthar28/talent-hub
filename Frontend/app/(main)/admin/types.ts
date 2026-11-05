@@ -1,13 +1,17 @@
+// Must match admin_stats_view in Backend/admin_panel/views.py
 export type AdminStats = {
   users: number;
   activeUsers: number;
   inactiveUsers: number;
-  staffUsers: number;
+  adminUsers: number;
+  candidates: number;
+  recruiters: number;
+  pendingRecruiters: number;
   skills: number;
   projects: number;
   experiences: number;
+  connections: number;
   pendingConnectionRequests: number;
-  pendingRecruiters: number;
 };
 
 export type AdminUser = {
@@ -53,12 +57,26 @@ export type AdminAuditLog = {
   createdAt: string;
 };
 
+// Must match admin_me_view in Backend/admin_panel/views.py
+export type AdminMe = {
+  memberSince: string;
+  lastSignIn: string | null;
+  impact: {
+    totalActions: number;
+    recruitersApproved: number;
+    recruitersRejected: number;
+    accountsManaged: number;
+    connectionsMade: number;
+    textsEdited: number;
+  };
+  activity: { date: string; count: number }[]; // oldest first, one per day
+  activeDays: number;
+  streak: number;
+  recent: AdminAuditLog[];
+};
+
 export type AdminUiContentItem = {
   id: number;
   key: string;
   value: string;
-};
-
-export type AuthUser = {
-  isStaff: boolean;
 };

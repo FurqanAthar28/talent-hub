@@ -1,98 +1,83 @@
-"use client";
+import { Type } from "lucide-react";
 
-import type { Dispatch, SetStateAction } from "react";
-
-import type { UiContent } from "../../../api/ui-content";
+import { EmptyState, ui } from "@/app/components/ui";
 import type { AdminUiContentItem } from "../types";
+import styles from "../admin.module.css";
+
+type TextFn = (key: string, fallback: string) => string;
 
 type Props = {
-  uiContent: UiContent;
+  text: TextFn;
   items: AdminUiContentItem[];
+  totalCount: number;
   searchTerm: string;
-  setSearchTerm: Dispatch<SetStateAction<string>>;
+  setSearchTerm: (value: string) => void;
   draftValues: Record<string, string>;
-  setDraftValues: Dispatch<SetStateAction<Record<string, string>>>;
+  setDraftValue: (key: string, value: string) => void;
   savingKey: string | null;
-  saveUiContent: (item: AdminUiContentItem) => Promise<void>;
+  onSave: (item: AdminUiContentItem) => void;
 };
 
+/** Edit the texts shown in the app (buttons, messages, emails) without code. */
 export default function UiContentSection({
-  uiContent,
+  text,
   items,
+  totalCount,
   searchTerm,
   setSearchTerm,
   draftValues,
-  setDraftValues,
+  setDraftValue,
   savingKey,
-  saveUiContent,
+  onSave,
 }: Props) {
   return (
-    <div className="card">
-      <div className="card-header flex-between">
-        <div>
-          <h3>{uiContent.adminUiContent || "UI Content"}</h3>
-          <p className="muted text-sm">
-            {uiContent.adminUiContentIntro ||
-              "Edit application text without changing code or running SQL."}
-          </p>
-        </div>
-
+    <section className={`${ui.panel} ${ui.panelFlush}`} aria-label="Page texts">
+      <div className={styles.toolbar}>
         <input
           type="search"
+          className={styles.search}
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
-          placeholder={
-            uiContent.adminUiContentSearchPlaceholder ||
-            "Search content keys or values"
-          }
-          className="admin-search-input"
+          placeholder={text("adminUiContentSearchPlaceholder", "Search texts")}
+          aria-label="Search texts"
         />
+        <span className={styles.count}>
+          {items.length === totalCount ? `${totalCount} texts` : `${items.length} of ${totalCount} texts`}
+        </span>
       </div>
 
-      <div className="card-body">
-        {items.length === 0 ? (
-          <p className="text-center muted">
-            {uiContent.adminNoUiContent || "No UI content found."}
-          </p>
-        ) : (
-          <div className="admin-ui-content-list">
-            {items.map((item) => {
-              const draftValue = draftValues[item.key] ?? item.value;
-              const hasChanges = draftValue !== item.value;
-
-              return (
-                <div key={item.key} className="admin-ui-content-row">
-                  <div className="admin-ui-content-key">
-                    <span>{item.key}</span>
-                  </div>
-
-                  <textarea
-                    value={draftValue}
-                    onChange={(event) =>
-                      setDraftValues((previousValues) => ({
-                        ...previousValues,
-                        [item.key]: event.target.value,
-                      }))
-                    }
-                    rows={2}
-                  />
-
-                  <button
-                    type="button"
-                    className="btn-outline btn-sm"
-                    disabled={!hasChanges || savingKey === item.key}
-                    onClick={() => saveUiContent(item)}
-                  >
-                    {savingKey === item.key
-                      ? uiContent.adminSavingUiContent || "Saving..."
-                      : uiContent.adminSaveUiContent || "Save"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
+      {items.length === 0 ? (
+        <EmptyState icon={Type} title={text("adminNoUiContent", "No texts found")} text="Try another word." />
+      ) : (
+        <ul className={ui.list}>
+          {items.map((item) => {
+            const draft = draftValues[item.key] ?? item.value;
+            const changed = draft !== item.value;
+            return (
+              <li key={item.key} className={styles.textRow}>
+                <label htmlFor={`text-${item.key}`} className={styles.textKey}>
+                  {item.key}
+                </label>
+                <textarea
+                  id={`text-${item.key}`}
+                  className={styles.textarea}
+                  value={draft}
+                  onChange={(event) => setDraftValue(item.key, event.target.value)}
+                  rows={Math.min(4, Math.max(1, Math.ceil(draft.length / 70)))}
+                />
+                <button
+                  type="button"
+                  className={changed ? "btn-primary btn-sm" : "btn-outline btn-sm"}
+                  onClick={() => onSave(item)}
+                  disabled={!changed || savingKey === item.key}
+                >
+                  {savingKey === item.key ? "Saving..." : "Save"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }

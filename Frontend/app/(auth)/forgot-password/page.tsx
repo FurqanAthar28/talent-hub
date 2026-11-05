@@ -1,145 +1,166 @@
 "use client";
 
+/**
+ * Forgot-password page, in 3 steps:
+ *   "request"  -> type your email, we send a 6-digit code
+ *   "confirm"  -> type the code and a new password
+ *   "complete" -> done, we take you to sign in
+ */
+
+import AuthShell from "../AuthShell";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+
+import { postJson } from "../../api/client";
 import { API_ROUTES } from "../../config/apiRoutes";
-import { apiFetch } from "../../api/client";
 import {
-  fetchUiContent,
-  getUiContentErrorMessage,
-  type UiContent,
-} from "../../api/ui-content";
+  MIN_PASSWORD_LENGTH,
+  OTP_LENGTH,
+  REDIRECT_DELAY_MS,
+} from "../../config/constants";
+import { MESSAGES } from "../../config/messages";
+import { ROUTES } from "../../config/routes";
+import { useUiContent } from "../../hooks/useUiContent";
 
 type Step = "request" | "confirm" | "complete";
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
+  const text = useUiContent();
 
-  const [uiContent, setUiContent] = useState<UiContent>({});
   const [step, setStep] = useState<Step>("request");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
+  const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // When the password is changed, wait a moment, then go to sign in.
+  // The "return" stops the timer if the user leaves the page first.
   useEffect(() => {
-    async function loadUiContent() {
-      try {
-        const data = await fetchUiContent();
-        setUiContent(data);
-      } catch (error) {
-        console.error("Failed to load password reset UI content:", error);
-        setError(getUiContentErrorMessage(error));
-      }
-    }
+    if (step !== "complete") return;
 
-    loadUiContent();
-  }, []);
+    const timer = window.setTimeout(
+      () => router.replace(ROUTES.SIGNIN),
+      REDIRECT_DELAY_MS
+    );
+    return () => window.clearTimeout(timer);
+  }, [step, router]);
 
-  async function requestOtp() {
-    setError("");
-    setNotice("");
-    setLoading(true);
-
-    try {
-      const res = await apiFetch(API_ROUTES.ACCOUNTS.PASSWORD_RESET_REQUEST, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || "Something went wrong.");
-
-        return;
-      }
-
-      setNotice(data.message || "OTP sent successfully.");
-      setStep("confirm");
-    } catch (error) {
-      console.error("Failed to request password reset OTP:", error);
-      setError(error instanceof Error ? error.message : "");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function confirmPasswordReset() {
-    setError("");
-    setNotice("");
-    setLoading(true);
-
-    try {
-      const res = await apiFetch(API_ROUTES.ACCOUNTS.PASSWORD_RESET_CONFIRM, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp, password }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) 
-      {
-        setError(data.message || "Something went wrong.");
-        return;
-      }
-
-      setNotice(
-  uiContent.passwordResetSuccessRedirect ||
-    "Password updated successfully. Redirecting to sign in..."
-);
-      setStep("complete");
-      window.setTimeout(() => {
-       router.replace("/signin");
-      }, 1500);
-    } catch (error) {
-      console.error("Failed to confirm password reset:", error);
-      setError(error instanceof Error ? error.message : "");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (event.key !== "Enter") return;
-
-    event.preventDefault();
-
-    if (step === "request") {
-      requestOtp();
+  // Step 1: ask Django to email a code.
+  async function requestCode() {
+    if (!email.trim()) {
+      setError(MESSAGES.AUTH.MISSING_EMAIL);
       return;
     }
 
-    if (step === "confirm") {
-      confirmPasswordReset();
+    const result = await postJson(API_ROUTES.ACCOUNTS.PASSWORD_RESET_REQUEST, {
+      email: email.trim(),
+    });
+
+    if (!result.ok) {
+      setError(result.message || MESSAGES.COMMON.SOMETHING_WENT_WRONG);
+      return;
+    }
+
+    setNotice(result.message || text("otpSent", "Code sent. Check your email."));
+    setStep("confirm");
+  }
+
+  // Step 2: send the code and the new password.
+  async function confirmReset() {
+    if (code.length !== OTP_LENGTH) {
+      setError(MESSAGES.AUTH.MISSING_EMAIL_AND_CODE);
+      return;
+    }
+
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setError(MESSAGES.AUTH.PASSWORD_TOO_SHORT);
+      return;
+    }
+
+    const result = await postJson(API_ROUTES.ACCOUNTS.PASSWORD_RESET_CONFIRM, {
+      email: email.trim(),
+      otp: code,
+      password,
+    });
+
+    if (!result.ok) {
+      setError(result.message || MESSAGES.AUTH.INVALID_CODE);
+      return;
+    }
+
+    setNotice(
+      text(
+        "passwordResetSuccessRedirect",
+        "Password updated. Taking you to sign in..."
+      )
+    );
+    setStep("complete");
+  }
+
+  // One <form> for both steps: the button and the Enter key both land here.
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (loading || step === "complete") return; // no double clicks
+
+    setError("");
+    setNotice("");
+    setLoading(true);
+
+    try {
+      if (step === "request") {
+        await requestCode();
+      } else {
+        await confirmReset();
+      }
+    } catch (err) {
+      console.error("Password reset error:", err);
+      setError(MESSAGES.COMMON.SERVER_UNREACHABLE);
+    } finally {
+      setLoading(false);
     }
   }
 
-  if (!uiContent.resetPassword) return null;
+  // Typed the wrong email? Go back to step 1.
+  function changeEmail() {
+    setStep("request");
+    setCode("");
+    setPassword("");
+    setError("");
+    setNotice("");
+  }
+
+  const isRequestStep = step === "request";
+
+  let buttonLabel = text("updatePassword", "Update password");
+  if (isRequestStep) {
+    buttonLabel = loading
+      ? text("sendingOtp", "Sending code...")
+      : text("sendOtp", "Send code");
+  } else if (loading) {
+    buttonLabel = text("updatingPassword", "Updating...");
+  }
 
   return (
-    <main className="auth-page">
-      <div className="auth-card">
-        <div className="auth-card-header">
-          <Link href="/" className="auth-logo">
-            {uiContent.appName}
-          </Link>
+    <AuthShell
+      title={text("resetPassword", "Reset password")}
+      subtitle={isRequestStep
+              ? text(
+                  "resetPasswordIntro",
+                  "Enter your email and we'll send you a code."
+                )
+              : text(
+                  "otpSentNextStep",
+                  "Enter the code from your email and choose a new password."
+                )}
+    >
 
-          <h1>{uiContent.resetPassword}</h1>
-
-          <p>
-            {step === "request"
-              ? uiContent.resetPasswordIntro
-              : uiContent.otpSentNextStep}
-          </p>
-        </div>
-
-        <div className="auth-clean-form">
+        <form className="auth-clean-form" onSubmit={handleSubmit} noValidate>
           <div className="form-group">
-            <label htmlFor="email">{uiContent.email}</label>
+            <label htmlFor="email">{text("email", "Email")}</label>
 
             <input
               id="email"
@@ -147,35 +168,41 @@ export default function ForgotPasswordPage() {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={uiContent.emailPlaceholder}
+              placeholder={text("emailPlaceholder", "Enter your email")}
               autoComplete="email"
-              disabled={step !== "request"}
+              disabled={!isRequestStep}
+              required
             />
           </div>
 
-          {step !== "request" && (
+          {!isRequestStep && (
             <>
               <div className="form-group">
-                <label htmlFor="otp">{uiContent.otp}</label>
+                <label htmlFor="otp">{text("otp", "Code")}</label>
 
                 <input
                   id="otp"
                   name="otp"
                   type="text"
-                  value={otp}
-                  onChange={(event) => setOtp(event.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={uiContent.otpPlaceholder}
+                  value={code}
+                  // Keep only digits, max 6, so pasting "123 456" still works.
+              // (No maxLength here: the browser would cut "123 456" to
+              // "123 45" BEFORE we could remove the space.)
+                  onChange={(event) =>
+                    setCode(event.target.value.replace(/\D/g, "").slice(0, OTP_LENGTH))
+                  }
+                  placeholder={text("otpPlaceholder", "6-digit code")}
                   inputMode="numeric"
-                  maxLength={6}
                   autoComplete="one-time-code"
                   disabled={step === "complete"}
+                  required
                 />
               </div>
 
               <div className="form-group">
-                <label htmlFor="password">{uiContent.newPassword}</label>
+                <label htmlFor="password">
+                  {text("newPassword", "New password")}
+                </label>
 
                 <input
                   id="password"
@@ -183,49 +210,55 @@ export default function ForgotPasswordPage() {
                   type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={uiContent.newPasswordPlaceholder}
+                  placeholder={text(
+                    "newPasswordPlaceholder",
+                    `At least ${MIN_PASSWORD_LENGTH} characters`
+                  )}
                   autoComplete="new-password"
+                  minLength={MIN_PASSWORD_LENGTH}
                   disabled={step === "complete"}
+                  required
                 />
               </div>
             </>
           )}
 
-          {error && <div className="form-error mb-2">{error}</div>}
-          {notice && <div className="form-success mb-2">{notice}</div>}
+          {error && (
+            <div className="form-error mb-2" role="alert">
+              {error}
+            </div>
+          )}
+          {notice && (
+            <div className="form-success mb-2" role="status">
+              {notice}
+            </div>
+          )}
 
-          {step === "request" ? (
+          <button
+            type="submit"
+            className="btn-primary btn-full"
+            disabled={loading || step === "complete"}
+          >
+            {buttonLabel}
+          </button>
+
+          {step === "confirm" && (
             <button
               type="button"
-              className="btn-primary btn-full"
-              disabled={loading || !email.trim()}
-              onClick={requestOtp}
+              className="btn-outline btn-full"
+              onClick={changeEmail}
+              disabled={loading}
             >
-              {loading ? uiContent.sendingOtp : uiContent.sendOtp}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn-primary btn-full"
-              disabled={
-                loading ||
-                step === "complete" ||
-                !email.trim() ||
-                otp.length !== 6 ||
-                !password
-              }
-              onClick={confirmPasswordReset}
-            >
-              {loading ? uiContent.updatingPassword : uiContent.updatePassword}
+              {text("changeEmail", "Use a different email")}
             </button>
           )}
 
           <p className="text-xs muted text-center mt-2">
-            <Link href={uiContent.routeSignin || "/signin"}></Link>
+            <Link href={ROUTES.SIGNIN}>
+              {text("backToSignin", "Back to sign in")}
+            </Link>
           </p>
-        </div>
-      </div>
-    </main>
+        </form>
+    </AuthShell>
   );
 }

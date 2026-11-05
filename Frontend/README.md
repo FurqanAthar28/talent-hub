@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Talent Hub frontend (Next.js 16)
 
-## Getting Started
+## First-time setup
 
-First, run the development server:
-
-```bash
+```bat
+npm install
+copy .env.example .env.local     &:: then check API_BASE_URL
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000 (the Django backend must be running on port 8000).
+Use "localhost", not "127.0.0.1": login cookies belong to the exact name you
+open, so switching between the two makes you look signed out.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How the frontend talks to Django
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+Browser  ->  /api/backend/...  (app/api/backend/[...path]/route.ts)  ->  Django /api/...
+```
 
-## Learn More
+The browser never calls Django directly. Because of that, the login cookies
+belong to the frontend's own address, and there are no CORS problems.
 
-To learn more about Next.js, take a look at the following resources:
+## Where things live
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| What | File |
+|---|---|
+| Backend (API) addresses | `app/config/apiRoutes.ts` |
+| Page addresses | `app/config/routes.ts` |
+| Calling the backend (CSRF, auto-refresh of login) | `app/api/client.ts` → `apiFetch()` |
+| Editable UI texts | `app/api/ui-content.ts` → `fetchUiContent()` |
+| "Sign in first" check before private pages | `proxy.ts` (Next 16's new name for middleware) |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Checks before you push
 
-## Deploy on Vercel
+```bat
+npx tsc --noEmit     &:: type errors
+npm run lint         &:: code style problems
+npm run build        &:: the real production build
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Deploying (for example on Vercel)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Set `API_BASE_URL` to your Django address (https) in the project's
+environment variables. Nothing else is needed.

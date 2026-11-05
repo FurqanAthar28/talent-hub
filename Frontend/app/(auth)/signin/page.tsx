@@ -1,208 +1,137 @@
 "use client";
 
-import { useEffect, useState } from "react";
+/**
+ * Sign-in page.
+ *
+ * Django checks the password and, if it's right, sets the login cookies.
+ * We never see or store the tokens here: the browser keeps them.
+ */
+
+import AuthShell from "../AuthShell";
+import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { apiFetch } from "../../api/client";
-import {
-  fetchUiContent,
-  getUiContentErrorMessage,
-  type UiContent,
-} from "../../api/ui-content";
+import { postJson } from "../../api/client";
 import { API_ROUTES } from "../../config/apiRoutes";
-import { ROUTES } from "../../config/routes";
-
-function getText(content: UiContent, key: keyof UiContent, fallback: string) {
-  const value = content[key];
-
-  if (!value || value === key || value === `/${key}`) {
-    return fallback;
-  }
-
-  return value;
-}
+import { APP_CONFIG } from "../../config/app";
+import { MESSAGES } from "../../config/messages";
+import { ROUTES, safeNextPath } from "../../config/routes";
+import { useUiContent } from "../../hooks/useUiContent";
 
 export default function SignInPage() {
   const router = useRouter();
+  const text = useUiContent();
 
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  });
-
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [uiContent, setUiContent] = useState<UiContent>({});
 
-  useEffect(() => {
-    async function loadUiContent() {
-      try {
-        const data = await fetchUiContent();
-        setUiContent(data);
-      } catch (error) {
-        setError(getUiContentErrorMessage(error));
-        setUiContent({});
-      }
-    }
+  // A real <form> calls this for the button AND for the Enter key.
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); // stop the browser from reloading the page
 
-    loadUiContent();
-  }, []);
+    // Already sending? Ignore extra clicks, so we never sign in twice.
+    if (loading) return;
 
-  async function handleSubmit() {
     setError("");
 
-    if (!formData.email.trim() || !formData.password) {
-      setError(
-        getText(
-          uiContent,
-          "signinMissingFields",
-          "Please enter your email and password."
-        )
-      );
+    if (!email.trim() || !password) {
+      setError(MESSAGES.AUTH.MISSING_EMAIL_AND_PASSWORD);
       return;
     }
 
     setLoading(true);
 
     try {
-      const res = await apiFetch(
-        API_ROUTES.ACCOUNTS.SIGNIN,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(formData),
-        },
-        { redirectOnUnauthorized: false }
-      );
+      const result = await postJson(API_ROUTES.ACCOUNTS.SIGNIN, {
+        email: email.trim(),
+        password,
+      });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(
-          data.message ||
-            data.error ||
-            getText(uiContent, "signinFailed", "Sign in failed. Please try again.")
-        );
+      if (!result.ok) {
+        setError(result.message || MESSAGES.AUTH.SIGNIN_FAILED);
         return;
       }
 
-      router.replace(ROUTES.DASHBOARD);
+      // Go back to the page they wanted before signing in ("?next=/messages"),
+      // or to the dashboard. safeNextPath only allows pages on OUR site.
+      const next = new URLSearchParams(window.location.search).get("next");
+      router.replace(safeNextPath(next));
     } catch (err) {
-      console.error("Signin error:", err);
-      setError(
-        getText(uiContent, "serverConnectionError", "Unable to connect to server.")
-      );
+      console.error("Sign-in error:", err);
+      setError(MESSAGES.COMMON.SERVER_UNREACHABLE);
     } finally {
       setLoading(false);
     }
   }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      handleSubmit();
-    }
-  }
-
-  function handleInputChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const { name, value } = event.target;
-
-    setFormData((previousFormData) => ({
-      ...previousFormData,
-      [name]: value,
-    }));
-  }
-
   return (
-    <main className="auth-page">
-      <div className="auth-card">
-        <div className="auth-card-header">
-          <Link href={ROUTES.HOME} className="auth-logo">
-            {getText(uiContent, "appName", "ProfessionalHub")}
-          </Link>
-
-          <h1>{getText(uiContent, "signinWelcome", "Welcome back")}</h1>
-
-          <p>
-            {getText(
-              uiContent,
+    <AuthShell
+      title={text("signinWelcome", "Welcome back")}
+      subtitle={text(
               "signinIntro",
               "Sign in to continue to your professional network."
             )}
-          </p>
-        </div>
+    >
 
-        <div className="auth-clean-form">
+        <form className="auth-clean-form" onSubmit={handleSubmit} noValidate>
           <div className="form-group">
-            <label htmlFor="email">{getText(uiContent, "email", "Email")}</label>
+            <label htmlFor="email">{text("email", "Email")}</label>
 
             <input
               id="email"
               name="email"
               type="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder={getText(
-                uiContent,
-                "emailPlaceholder",
-                "Enter your email address"
-              )}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder={text("emailPlaceholder", "Enter your email address")}
               autoComplete="email"
+              required
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">
-              {getText(uiContent, "password", "Password")}
-            </label>
+            <label htmlFor="password">{text("password", "Password")}</label>
 
             <input
               id="password"
               name="password"
               type="password"
-              value={formData.password}
-              onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder={getText(
-                uiContent,
-                "passwordPlaceholder",
-                "Enter your password"
-              )}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder={text("passwordPlaceholder", "Enter your password")}
               autoComplete="current-password"
+              required
             />
           </div>
 
           <p className="text-xs text-right mb-2">
             <Link href={ROUTES.FORGOT_PASSWORD}>
-              {getText(uiContent, "forgotPassword", "Forgot password?")}
+              {text("forgotPassword", "Forgot password?")}
             </Link>
           </p>
 
-          {error && <div className="form-error mb-2">{error}</div>}
+          {error && (
+            <div className="form-error mb-2" role="alert">
+              {error}
+            </div>
+          )}
 
-          <button
-            type="button"
-            className="btn-primary btn-full"
-            disabled={loading}
-            onClick={handleSubmit}
-          >
+          <button type="submit" className="btn-primary btn-full" disabled={loading}>
             {loading
-              ? getText(uiContent, "signingIn", "Signing in...")
-              : getText(uiContent, "signin", "Sign in")}
+              ? text("signingIn", "Signing in...")
+              : text("signin", "Sign in")}
           </button>
 
           <p className="text-xs muted text-center mt-2">
-            {getText(uiContent, "newToApp", "New to ProfessionalHub?")}{" "}
+            {text("newToApp", `New to ${APP_CONFIG.NAME}?`)}{" "}
             <Link href={ROUTES.SIGNUP}>
-              {getText(uiContent, "createAccount", "Create account")}
+              {text("createAccount", "Create account")}
             </Link>
           </p>
-        </div>
-      </div>
-    </main>
+        </form>
+    </AuthShell>
   );
 }

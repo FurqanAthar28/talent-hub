@@ -1,134 +1,231 @@
 "use client";
 
-import { useEffect, useState } from "react";
+/**
+ * A recruiter's home page.
+ * Top: search candidates (the recruiter's main job), with popular skills
+ * as one-click shortcuts. If an admin hasn't approved the account yet,
+ * a clear status message is shown instead.
+ */
+
 import Link from "next/link";
-import {
-  getRecruiterDashboardData,
-  type RecruiterDashboardData,
-} from "@/app/services/dashboard";
+import { useRouter } from "next/navigation";
+import { Hourglass, Inbox, MessageSquare, Search, ShieldCheck, UserPen, Users } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
 
-export default function RecruiterDashboardSection() {
-  const [data, setData] = useState<RecruiterDashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+import { ROUTES } from "@/app/config/routes";
+import { getRecruiterSummary, type Activity, type RecruiterSummary } from "@/app/services/dashboard";
+import type { Profile } from "@/app/services/profiles";
+import { getSkillOptions } from "@/app/services/skills";
+import styles from "../../dashboard.module.css";
+import ActivityTimeline from "../common/ActivityTimeline";
+import FactStrip from "../common/FactStrip";
+import ProfileReadiness from "../common/ProfileReadiness";
+import ShortcutList from "../common/ShortcutList";
 
+// How many popular skills to show under the search box.
+const SKILL_SHORTCUT_COUNT = 6;
+
+type RecruiterDashboardProps = {
+  profile: Profile;
+  activities: Activity[];
+};
+
+/** "Your account is being reviewed" / "wasn't approved". */
+function VerificationStatus({ profile }: { profile: Profile }) {
+  const rejected = profile.recruiterVerificationStatus === "rejected";
+
+  return (
+    <section className={`${styles.panel} ${styles.status}`} role="status">
+      <span className={`${styles.statusIcon} ${rejected ? styles.statusIconBad : ""}`}>
+        {rejected ? <ShieldCheck size={22} aria-hidden="true" /> : <Hourglass size={22} aria-hidden="true" />}
+      </span>
+      <div>
+        <h2 className={styles.searchTitle}>
+          {rejected ? "Your recruiter account wasn't approved" : "Your recruiter account is being reviewed"}
+        </h2>
+        <p className={styles.readinessMeta}>
+          {rejected
+            ? "Check your company details below, update them, and contact the admin team to be reviewed again."
+            : "An admin checks every new recruiter. Candidate search and messaging open as soon as you're approved. Meanwhile, complete your company details."}
+        </p>
+        {profile.recruiterVerificationNote && (
+          <p className={styles.statusNote}>
+            <strong>Note from the admin:</strong> {profile.recruiterVerificationNote}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/** The big search box. Sends you to the candidates page with your search filled in. */
+function CandidateSearch({ candidatesCount }: { candidatesCount?: number }) {
+  const router = useRouter();
+  const [query, setQuery] = useState("");
+  const [skills, setSkills] = useState<string[]>([]);
+
+  // Popular skills for the one-click shortcuts.
   useEffect(() => {
-    async function loadRecruiterData() {
-      try {
-        const recruiterData = await getRecruiterDashboardData();
-        setData(recruiterData);
-      } catch {
-        setData(null);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadRecruiterData();
+    let pageIsOpen = true;
+    getSkillOptions()
+      .then((list) => {
+        if (pageIsOpen) setSkills(list.slice(0, SKILL_SHORTCUT_COUNT));
+      })
+      .catch(() => {
+        // Not important: the search box still works without shortcuts.
+      });
+    return () => {
+      pageIsOpen = false;
+    };
   }, []);
 
-  if (loading) {
-    return <p>Loading recruiter dashboard...</p>;
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const search = query.trim();
+    router.push(
+      search
+        ? `${ROUTES.RECRUITER_CANDIDATES}?search=${encodeURIComponent(search)}`
+        : ROUTES.RECRUITER_CANDIDATES
+    );
   }
 
   return (
-    <div className="dashboard-linkedin-layout dashboard-home-layout recruiter-dashboard-layout">
-      <aside className="dashboard-profile-panel">
-        <div className="dashboard-profile-cover" />
-        <div className="dashboard-profile-body">
-          <div className="dashboard-avatar">HR</div>
-          <h2>Hiring workspace</h2>
-          <p>Search candidates, grow your hiring network, and continue conversations.</p>
-          <span className="status-badge status-success">Recruiter</span>
+    <section className={`${styles.panel} ${styles.search}`} aria-labelledby="search-title">
+      <h2 id="search-title" className={styles.searchTitle}>
+        Find your next hire
+      </h2>
+      <p className={styles.readinessMeta}>
+        {candidatesCount === undefined
+          ? "Search candidates by skill, name or city."
+          : `Search ${candidatesCount} candidates by skill, name or city.`}
+      </p>
+
+      <form className={styles.searchForm} onSubmit={handleSubmit} role="search">
+        <input
+          type="search"
+          className={styles.searchInput}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="For example: Django developer in Lahore"
+          aria-label="Search candidates"
+        />
+        <button type="submit" className={styles.searchButton}>
+          Search
+        </button>
+      </form>
+
+      {skills.length > 0 && (
+        <div className={styles.chips}>
+          <span className={styles.missingLabel}>Popular skills:</span>
+          {skills.map((skill) => (
+            <Link
+              key={skill}
+              href={`${ROUTES.RECRUITER_CANDIDATES}?skill=${encodeURIComponent(skill)}`}
+              className={styles.chip}
+            >
+              {skill}
+            </Link>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default function RecruiterDashboard({ profile, activities }: RecruiterDashboardProps) {
+  const isApproved = profile.recruiterVerificationStatus === "approved";
+  const [summary, setSummary] = useState<RecruiterSummary | null>(null);
+
+  // The numbers only exist for approved recruiters (Django says "no" otherwise).
+  useEffect(() => {
+    if (!isApproved) return;
+
+    let pageIsOpen = true;
+    getRecruiterSummary()
+      .then((data) => {
+        if (pageIsOpen) setSummary(data);
+      })
+      .catch((error: unknown) => console.warn("Recruiter numbers unavailable:", error));
+    return () => {
+      pageIsOpen = false;
+    };
+  }, [isApproved]);
+
+  // "-" while loading, instead of a fake 0.
+  const show = (value: number | undefined) => (value === undefined ? "-" : value);
+
+  return (
+    <>
+      {isApproved ? <CandidateSearch candidatesCount={summary?.candidatesCount} /> : <VerificationStatus profile={profile} />}
+
+      <div className={styles.columns}>
+        <div className={styles.stack}>
+          {isApproved && (
+            <FactStrip
+              facts={[
+                {
+                  icon: Search,
+                  value: show(summary?.candidatesCount),
+                  label: "candidates you can search",
+                  href: ROUTES.RECRUITER_CANDIDATES,
+                },
+                {
+                  icon: Users,
+                  value: show(summary?.connectionsCount),
+                  label: "connections",
+                  href: ROUTES.CONNECTIONS,
+                },
+                {
+                  icon: Inbox,
+                  value: show(summary?.pendingRequestsCount),
+                  label: "requests waiting for you",
+                  href: ROUTES.CONNECTIONS,
+                },
+              ]}
+            />
+          )}
+
+          {profile.profileCompletion < 100 && (
+            <ProfileReadiness
+              percent={profile.profileCompletion}
+              checklist={profile.completionChecklist}
+              audience="candidates"
+            />
+          )}
+
+          <ShortcutList
+            title="Hiring tools"
+            shortcuts={[
+              {
+                icon: Search,
+                title: "Search candidates",
+                text: "Filter by skill, location and who is open to work.",
+                href: ROUTES.RECRUITER_CANDIDATES,
+              },
+              {
+                icon: Users,
+                title: "Your network",
+                text: "Answer invitations and connect with candidates.",
+                href: ROUTES.CONNECTIONS,
+              },
+              {
+                icon: MessageSquare,
+                title: "Messages",
+                text: "Continue your hiring conversations.",
+                href: ROUTES.MESSAGES,
+              },
+              {
+                icon: UserPen,
+                title: "Company details",
+                text: "Keep your company and job title accurate.",
+                href: `${ROUTES.PROFILE_EDIT}#company`,
+              },
+            ]}
+          />
         </div>
 
-        <div className="dashboard-panel-list">
-          <div>
-            <span>Available candidates</span>
-            <strong>{data?.availableProfessionalsCount ?? 0}</strong>
-          </div>
-          <div>
-            <span>Connections</span>
-            <strong>{data?.myConnectionsCount ?? 0}</strong>
-          </div>
-        </div>
-      </aside>
-
-      <section className="dashboard-main-column">
-        <article className="dashboard-work-card">
-          <div className="dashboard-work-header">
-            <div>
-              <p className="eyebrow">Candidate pipeline</p>
-              <h2>Find and contact qualified professionals</h2>
-            </div>
-            <strong>{data?.availableProfessionalsCount ?? 0}</strong>
-          </div>
-
-          <p className="muted">
-            Review candidate profiles, connect with relevant professionals, and move promising conversations into messages.
-          </p>
-
-          <div className="dashboard-recruiter-actions">
-            <Link href="/recruiter/candidates" className="btn-primary">
-              Search candidates
-            </Link>
-            <Link href="/connections" className="btn-outline">
-              Manage network
-            </Link>
-          </div>
-        </article>
-
-        <section className="dashboard-section dashboard-signal-section">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <p className="eyebrow">Activity</p>
-              <h2>Recruiter signals</h2>
-            </div>
-          </div>
-
-          <div className="dashboard-signal-grid">
-            <div>
-              <span>Candidates</span>
-              <strong>{data?.availableProfessionalsCount ?? 0}</strong>
-            </div>
-            <div>
-              <span>Connections</span>
-              <strong>{data?.myConnectionsCount ?? 0}</strong>
-            </div>
-            <div>
-              <span>Pending requests</span>
-              <strong>{data?.pendingRequestsCount ?? 0}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section className="dashboard-section">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <p className="eyebrow">Hiring actions</p>
-              <h2>Keep recruiting work moving</h2>
-            </div>
-          </div>
-
-          <div className="dashboard-action-list">
-            <Link href="/recruiter/candidates" className="dashboard-action-row">
-              <span>Search by skill, location, and candidate profile details</span>
-              <strong>Find talent</strong>
-            </Link>
-            <Link href="/connections" className="dashboard-action-row">
-              <span>Accept invitations and grow your recruiter network</span>
-              <strong>Network</strong>
-            </Link>
-            <Link href="/messages" className="dashboard-action-row">
-              <span>Continue active hiring conversations</span>
-              <strong>Inbox</strong>
-            </Link>
-            <Link href="/profile/edit#company" className="dashboard-action-row">
-              <span>Keep your company and hiring profile accurate</span>
-              <strong>Edit profile</strong>
-            </Link>
-          </div>
-        </section>
-      </section>
-    </div>
+        <ActivityTimeline activities={activities} />
+      </div>
+    </>
   );
 }

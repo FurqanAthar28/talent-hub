@@ -1,5 +1,7 @@
-import { apiFetch } from "@/app/api/client";
+import { apiFetch, getApiMessage, readJson } from "@/app/api/client";
+import { API_ROUTES } from "@/app/config/apiRoutes";
 
+/** One candidate card, as Django's recruiter API sends it. */
 export type RecruiterCandidate = {
   id: number;
   fullName: string;
@@ -19,37 +21,50 @@ export type RecruiterCandidateFilters = {
   openToWork?: boolean;
 };
 
+/**
+ * Stop with Django's own message (for example "Only approved recruiters
+ * can search candidates.") so the page can show the real reason.
+ */
+async function throwIfFailed(response: Response, fallback: string) {
+  if (response.ok) return;
+
+  const data = await readJson(response);
+  throw new Error(getApiMessage(data) || fallback);
+}
+
+/**
+ * Search candidates. Empty filters are left out of the address.
+ * `signal` lets the page cancel this search when a newer one starts.
+ */
 export async function getRecruiterCandidates(
-  filters: RecruiterCandidateFilters = {}
+  filters: RecruiterCandidateFilters = {},
+  signal?: AbortSignal
 ): Promise<RecruiterCandidate[]> {
   const params = new URLSearchParams();
 
   if (filters.search?.trim()) params.set("search", filters.search.trim());
   if (filters.skill?.trim()) params.set("skill", filters.skill.trim());
   if (filters.location?.trim()) params.set("location", filters.location.trim());
-
   if (typeof filters.openToWork === "boolean") {
     params.set("open_to_work", String(filters.openToWork));
   }
 
   const query = params.toString();
-  const res = await apiFetch(`/recruiter/candidates/${query ? `?${query}` : ""}`);
+  const response = await apiFetch(
+    `${API_ROUTES.RECRUITER.CANDIDATES}${query ? `?${query}` : ""}`,
+    { signal }
+  );
+  await throwIfFailed(response, "Failed to load candidates.");
 
-  if (!res.ok) {
-    throw new Error("Failed to load recruiter candidates");
-  }
-
-  return res.json();
+  const data: unknown = await response.json();
+  return Array.isArray(data) ? (data as RecruiterCandidate[]) : [];
 }
 
 export async function getRecruiterCandidate(
   candidateId: string
 ): Promise<RecruiterCandidate> {
-  const res = await apiFetch(`/recruiter/candidates/${candidateId}/`);
+  const response = await apiFetch(API_ROUTES.RECRUITER.CANDIDATE(candidateId));
+  await throwIfFailed(response, "Failed to load this candidate.");
 
-  if (!res.ok) {
-    throw new Error("Failed to load recruiter candidate");
-  }
-
-  return res.json();
+  return (await response.json()) as RecruiterCandidate;
 }

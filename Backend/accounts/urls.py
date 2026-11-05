@@ -1,38 +1,50 @@
+"""
+Web addresses for the accounts app.
+
+config/urls.py adds "api/accounts/" in front of each one,
+so "signin/" below becomes "/api/accounts/signin/".
+
+Each path has a `name`, so other code can find it with reverse("accounts:signin")
+instead of typing the address by hand.
+
+The admin endpoints live in the admin_panel app ("/api/admin/..."), not here.
+"""
+
 from django.urls import path
 
-from .views import (
-    admin_audit_logs_view,
-    admin_recruiter_verification_view,
-    admin_stats_view,
-    admin_user_role_view,
-    admin_user_status_view,
-    admin_users_view,
-    email_verification_confirm_view,
-    email_verification_request_view,
-    logout_view,
-    me_view,
-    password_reset_confirm_view,
-    password_reset_request_view,
-    signin_view,
-    signup_view,
-)
+from . import views
+
+app_name = "accounts"
 
 urlpatterns = [
-    path("signup/", signup_view),
-    path("signin/", signin_view),
-    path("admin/stats/", admin_stats_view),
-    path("admin/audit-logs/", admin_audit_logs_view),
-    path("admin/users/", admin_users_view),
-    path("admin/users/<int:user_id>/status/", admin_user_status_view),
-    path("admin/users/<int:user_id>/role/", admin_user_role_view),
+    # --- Logging in and staying logged in ---
+    path("signin/", views.signin_view, name="signin"),
+    path("refresh/", views.refresh_view, name="refresh"),
+    path("logout/", views.logout_view, name="logout"),
+    path("me/", views.me_view, name="me"),
+    path("csrf/", views.csrf_view, name="csrf"),
+    path("delete-account/", views.delete_account_view, name="delete-account"),
+    # --- Creating an account ---
+    path("signup/", views.signup_view, name="signup"),
     path(
-        "admin/users/<int:user_id>/recruiter-verification/",
-        admin_recruiter_verification_view,
+        "email-verification/request/",
+        views.email_verification_request_view,
+        name="email-verification-request",
     ),
-    path("password-reset/request/", password_reset_request_view),
-    path("password-reset/confirm/", password_reset_confirm_view),
-    path("email-verification/request/", email_verification_request_view),
-    path("email-verification/confirm/", email_verification_confirm_view),
-    path("me/", me_view),
-    path("logout/", logout_view),
+    path(
+        "email-verification/confirm/",
+        views.email_verification_confirm_view,
+        name="email-verification-confirm",
+    ),
+    # --- Forgot password ---
+    path(
+        "password-reset/request/",
+        views.password_reset_request_view,
+        name="password-reset-request",
+    ),
+    path(
+        "password-reset/confirm/",
+        views.password_reset_confirm_view,
+        name="password-reset-confirm",
+    ),
 ]

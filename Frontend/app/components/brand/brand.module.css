@@ -1,0 +1,42 @@
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.logo:hover {
+  text-decoration: none;
+}
+
+.mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--primary-color);
+  color: #fff;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.logoLarge {
+  font-size: 20px;
+}
+
+.logoLarge .mark {
+  width: 36px;
+  height: 36px;
+  font-size: 19px;
+}
+
+.logo:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 4px;
+  border-radius: 6px;
+}

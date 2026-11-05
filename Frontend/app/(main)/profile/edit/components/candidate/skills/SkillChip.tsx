@@ -1,27 +1,22 @@
-import type { Skill } from "./skillTypes";
+import type { Skill } from "@/app/services/skills";
 
 type SkillChipProps = {
   skill: Skill;
-  onEdit: (skill: Skill) => void;
+  busy: boolean; // true while something is saving: the × is switched off
   onDelete: (skillId: number) => void;
 };
 
-export default function SkillChip({ skill, onEdit, onDelete }: SkillChipProps) {
+/** One skill "pill" with a × button to remove it. */
+export default function SkillChip({ skill, busy, onDelete }: SkillChipProps) {
   return (
     <div className="skill-chip">
-      <button
-        type="button"
-        className="skill-chip-name"
-        onClick={() => onEdit(skill)}
-        title="Edit skill"
-      >
-        {skill.name}
-      </button>
+      <span className="skill-chip-name">{skill.name}</span>
 
       <button
         type="button"
         className="skill-chip-remove"
         onClick={() => onDelete(skill.id)}
+        disabled={busy}
         aria-label={`Remove ${skill.name}`}
         title="Remove skill"
       >

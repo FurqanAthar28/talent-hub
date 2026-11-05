@@ -1,3 +1,18 @@
+/**
+ * UI texts: every word on the screen that admins can change
+ * (buttons, titles, messages...), loaded from Django.
+ *
+ * HOW TO USE IN A PAGE
+ *   const texts = await fetchUiContent();
+ *   <h1>{texts.signinWelcome || "Welcome back"}</h1>
+ *   Always keep a fallback (the part after ||), so the page still reads
+ *   well if a text is missing or an admin cleared it.
+ *
+ * Page and backend ADDRESSES are NOT texts: they live in
+ * config/routes.ts and config/apiRoutes.ts.
+ */
+
+import { API_ROUTES } from "../config/apiRoutes";
 import { apiFetch } from "./client";
 
 export type UiContent = Record<string, string>;
@@ -9,20 +24,12 @@ export class UiContentError extends Error {
   }
 }
 
-const REQUIRED_UI_CONTENT_KEYS = [
-  "apiAccountsLogout",
-  "apiAccountsMe",
-  "apiMediaPrefix",
-  "apiMyConnections",
-  "apiConversations",
-  "apiConversationMessagesSuffix",
-  "apiStartConversation",
-  "apiProfileExperiences",
-  "apiProfileActivities",
-  "apiProfileMe",
-  "apiProfileProjects",
-  "apiProfileSkills",
-  "apiProfileUpdate",
+/**
+ * Texts the pages expect. A missing one is NOT an error any more (every
+ * page has a fallback). Before, ONE empty text broke the whole app.
+ * While developing, missing ones are listed in the browser console.
+ */
+const EXPECTED_UI_CONTENT_KEYS = [
   "appName",
   "avatarFallbackInitial",
   "contact",
@@ -45,18 +52,9 @@ const REQUIRED_UI_CONTENT_KEYS = [
   "professionalFallback",
   "profile",
   "projects",
-  "routeForgotPassword",
-  "routeConnections",
-  "routeDashboard",
-  "routeMessages",
-  "routeProfile",
-  "routeProfileEdit",
-  "routeSignin",
   "skills",
   "startDateFallback",
   "viewCv",
-  "apiPasswordResetRequest",
-  "apiPasswordResetConfirm",
   "resetPassword",
   "resetPasswordIntro",
   "email",
@@ -159,9 +157,6 @@ const REQUIRED_UI_CONTENT_KEYS = [
   "adminSaveUiContent",
   "adminSavingUiContent",
   "adminUiContentUpdated",
-  "routeAdmin",
-  "apiAdminStats",
-  "apiAdminUsers",
   "signinWelcome",
   "signinIntro",
   "password",
@@ -173,8 +168,6 @@ const REQUIRED_UI_CONTENT_KEYS = [
   "serverConnectionError",
   "newToApp",
   "createAccount",
-  "routeSignup",
-  "apiSignin",
   "role",
   "candidate",
   "recruiter",
@@ -182,7 +175,6 @@ const REQUIRED_UI_CONTENT_KEYS = [
   "selectRole",
   "adminInvalidUserRole",
   "adminCannotChangeOwnRole",
-  "apiAdminUserRoleSuffix",
   "candidateProfile",
   "recruiterProfile",
   "adminProfile",
@@ -217,9 +209,6 @@ const REQUIRED_UI_CONTENT_KEYS = [
   "adminConnectionCreated",
   "adminConnectionRemoved",
   "adminInvalidConnectionUsers",
-  "apiAdminConnections",
-  "apiAdminConnectUsers",
-  "apiAdminDisconnectUsers",
   "adminAuditLogs",
   "adminAuditLogsIntro",
   "adminAuditAction",
@@ -227,7 +216,6 @@ const REQUIRED_UI_CONTENT_KEYS = [
   "adminAuditTarget",
   "adminAuditTime",
   "adminNoAuditLogs",
-  "apiAdminAuditLogs",
   "emailVerificationSubject",
   "emailVerificationBody",
   "emailVerificationSent",
@@ -243,9 +231,6 @@ const REQUIRED_UI_CONTENT_KEYS = [
   "verifyingOtp",
   "resendOtp",
   "resendingOtp",
-  "routeVerifyEmail",
-  "apiEmailVerificationRequest",
-  "apiEmailVerificationConfirm",
   "adminPendingRecruiters",
   "adminRecruiterVerification",
   "adminRecruiterPending",
@@ -258,7 +243,6 @@ const REQUIRED_UI_CONTENT_KEYS = [
   "adminRecruiterVerificationUpdated",
   "recruiterVerificationPendingNotice",
   "recruiterVerificationRejectedNotice",
-  "apiAdminRecruiterVerificationSuffix",
   "connectionAccept",
   "connectionAccepted",
   "connectionAccepting",
@@ -346,12 +330,14 @@ const REQUIRED_UI_CONTENT_KEYS = [
   "saveChanges",
 ];
 
-function validateUiContent(data: UiContent) {
-  const missingKeys = REQUIRED_UI_CONTENT_KEYS.filter((key) => !data[key]);
+function warnAboutMissingTexts(data: UiContent) {
+  if (process.env.NODE_ENV === "production") return;
 
+  const missingKeys = EXPECTED_UI_CONTENT_KEYS.filter((key) => !data[key]);
   if (missingKeys.length > 0) {
-    throw new UiContentError(
-      `Backend UI content is missing required keys: ${missingKeys.join(", ")}`
+    console.warn(
+      `[ui-content] ${missingKeys.length} text(s) are missing or empty, so pages show their fallback text:`,
+      missingKeys
     );
   }
 }
@@ -364,34 +350,63 @@ export function getUiContentErrorMessage(error: unknown) {
   return "Unable to load UI content from backend.";
 }
 
-export async function fetchUiContent(): Promise<UiContent> {
-  try {
-    const res = await apiFetch(
-      "/app-config/ui-content/",
-      undefined,
-      { redirectOnUnauthorized: false }
-    );
+/**
+ * The texts are loaded ONCE per browser tab and then reused.
+ * Before, the layout AND each page asked for the same ~300 texts on every
+ * page change. `loadingTexts` remembers the request, so even two calls at
+ * the same moment share one trip to the server.
+ */
+let loadingTexts: Promise<UiContent> | null = null;
 
-    if (!res.ok) {
-      throw new UiContentError(
-        `Unable to load UI content from backend. Request failed with status ${res.status}.`
-      );
-    }
+async function downloadUiContent(): Promise<UiContent> {
+  const res = await apiFetch(API_ROUTES.APP_CONFIG.UI_CONTENT, undefined, {
+    redirectOnUnauthorized: false,
+  });
 
-    const data = (await res.json()) as UiContent;
-    validateUiContent(data);
-
-    return data;
-  } catch (error) {
-    if (error instanceof UiContentError) {
-      throw error;
-    }
-
+  if (!res.ok) {
     throw new UiContentError(
-      `Unable to load UI content from backend. ${
-        error instanceof Error ? error.message : "Unknown error."
-      }`
+      `Unable to load UI content from backend. Request failed with status ${res.status}.`
     );
   }
+
+  const data = (await res.json()) as UiContent;
+  warnAboutMissingTexts(data);
+  return data;
 }
 
+export async function fetchUiContent(): Promise<UiContent> {
+  if (!loadingTexts) {
+    loadingTexts = downloadUiContent().catch((error: unknown) => {
+      // Don't remember a FAILED download: try again next time.
+      loadingTexts = null;
+
+      if (error instanceof UiContentError) throw error;
+      throw new UiContentError(
+        `Unable to load UI content from backend. ${
+          error instanceof Error ? error.message : "Unknown error."
+        }`
+      );
+    });
+  }
+
+  return loadingTexts;
+}
+
+/** Forget the saved texts (the admin page calls this after editing one). */
+export function clearUiContentCache() {
+  loadingTexts = null;
+}
+
+/**
+ * Pick one text, with an English fallback.
+ * The fallback is used while the texts are still loading, if loading
+ * failed, or if an admin hasn't filled that text in yet.
+ */
+export function uiText(content: UiContent, key: string, fallback: string) {
+  const value = content[key];
+
+  // A missing text sometimes comes back as its own key ("email"); skip that.
+  if (!value || value === key) return fallback;
+
+  return value;
+}

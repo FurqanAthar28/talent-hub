@@ -1,69 +1,101 @@
+"""
+The admin page API ("/api/admin/...").
+
+Only APP ADMINS can use these endpoints: profile role "admin"
+(IsAppAdmin, profiles/permissions.py). Django staff/superusers are a
+different thing and do NOT get in. The frontend uses the same rule.
+
+WHAT'S IN THIS FILE
+1. Helpers
+2. Dashboard numbers
+3. Users        -> list, switch on/off, change role, verify recruiters
+4. Connections  -> list, connect, disconnect
+5. Audit log
+6. UI content   -> the editable texts
+"""
+
+from datetime import timedelta
+
 from django.contrib.auth.models import User
-from django.db.models import Q
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+from django.db import transaction
+from django.db.models import Count, F
+from django.db.models.functions import TruncDate
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.response import Response
 
 from accounts.models import AdminActionLog
 from app_config.models import UiContent
-from connections.models import Connection
-from profiles.models import Profile
+from config.db_helpers import count_related
+from connections.models import Connection, ConnectionRequest
+from connections.network import connect_users, disconnect_users, network_users, requests_between
+from connections.serializers import AdminConnectionSerializer
+from profiles.models import Experience, Profile, Project, Skill
+from profiles.permissions import IsAppAdmin
+
+from .serializers import (
+    AdminAuditLogSerializer,
+    AdminUiContentSerializer,
+    AdminUserSerializer,
+    ConnectUsersSerializer,
+    RecruiterVerificationSerializer,
+    UiContentUpdateSerializer,
+    UserPairSerializer,
+    UserRoleSerializer,
+    UserStatusSerializer,
+)
+
+# How many audit log rows to show.
+AUDIT_LOG_LIMIT = 50
+
+# The admin's own profile: how many days the activity grid shows (12 weeks),
+# and how many of their latest actions to list.
+ACTIVITY_DAYS = 84
+MY_RECENT_ACTIONS = 6
+
+# The short codes written in the audit log. One list, so the counting on the
+# admin's profile always matches what the buttons write.
+ACTION_USER_ACTIVATED = "user_activated"
+ACTION_USER_DEACTIVATED = "user_deactivated"
+ACTION_ROLE_CHANGED = "role_changed"
+ACTION_RECRUITER_VERIFICATION = "recruiter_verification_changed"
+ACTION_CONNECTION_CREATED = "connection_created"
+ACTION_CONNECTION_REMOVED = "connection_removed"
+ACTION_UI_CONTENT_UPDATED = "ui_content_updated"
 
 
-def is_admin_user(user):
-    return user.is_authenticated and (user.is_staff or user.profile.role == Profile.ROLE_ADMIN)
+# =============================================================================
+# 1. HELPERS
+# =============================================================================
 
 
-def require_admin(request):
-    if not is_admin_user(request.user):
-        return Response(
-            {"message": "You do not have permission to access admin data."},
-            status=status.HTTP_403_FORBIDDEN,
-        )
-
-    return None
-
-
-def serialize_user(user):
-    profile = getattr(user, "profile", None)
-
-    return {
-        "id": user.id,
-        "fullName": user.get_full_name() or user.username,
-        "email": user.email,
-        "role": profile.role if profile else "candidate",
-        "is_active": user.is_active,
-        "is_staff": user.is_staff,
-        "recruiterVerificationStatus": (
-            profile.recruiter_verification_status if profile else "approved"
-        ),
-        "dateJoined": user.date_joined,
-    }
+def admin_users():
+    """
+    All users, with their profile and 4 counts added as extra columns.
+    (count_related lives in config/db_helpers.py.)
+    """
+    return User.objects.select_related("profile").annotate(
+        skills_count=count_related(Skill, "profile__user"),
+        projects_count=count_related(Project, "profile__user"),
+        experiences_count=count_related(Experience, "profile__user"),
+        connections_count=count_related(Connection, "user"),
+    )
 
 
-def serialize_connection(connection):
-    return {
-        "id": connection.id,
-        "userId": connection.user.id,
-        "connectedUserId": connection.connected_user.id,
-        "userName": connection.user.get_full_name() or connection.user.username,
-        "connectedUserName": connection.connected_user.get_full_name()
-        or connection.connected_user.username,
-        "createdAt": connection.created_at,
-    }
+def user_response(user_id, message):
+    """Send back ONE user, freshly loaded WITH the counts, plus a message."""
+    data = dict(AdminUserSerializer(admin_users().get(pk=user_id)).data)
+    data["message"] = message
+    return Response(data)
 
 
-def serialize_ui_content(item):
-    return {
-        "id": item.id,
-        "key": item.key,
-        "value": item.value,
-    }
-
-
-def create_admin_log(actor, action, description, target_user=None, metadata=None):
+def log_action(request, action, description, target_user=None, metadata=None):
+    """Write one line in the admin audit log."""
     AdminActionLog.objects.create(
-        actor=actor,
+        actor=request.user,
         target_user=target_user,
         action=action,
         description=description,
@@ -71,120 +103,133 @@ def create_admin_log(actor, action, description, target_user=None, metadata=None
     )
 
 
+def get_target_user(request, user_id):
+    """
+    Find the user an admin wants to change.
+
+    Admins may not change THEMSELVES or a SUPERUSER here, so nobody can
+    lock themselves (or the site owner) out by accident.
+    `raise PermissionDenied(...)` stops the view right here and answers
+    403 with {"message": "..."}.
+    """
+    user = get_object_or_404(User.objects.select_related("profile"), pk=user_id)
+
+    if user.pk == request.user.pk:
+        raise PermissionDenied("You can't change your own account here.")
+    if user.is_superuser:
+        raise PermissionDenied("Superuser accounts can only be changed with manage.py.")
+    return user
+
+
+# =============================================================================
+# 2. DASHBOARD NUMBERS
+# =============================================================================
+
+
 @api_view(["GET"])
+@permission_classes([IsAppAdmin])
 def admin_stats_view(request):
-    permission_error = require_admin(request)
-    if permission_error:
-        return permission_error
+    """The numbers at the top of the admin page and the admin dashboard."""
+    users = User.objects.all()
+    recruiters = Profile.objects.filter(role=Profile.ROLE_RECRUITER)
 
     return Response(
         {
-            "totalUsers": User.objects.count(),
-            "activeUsers": User.objects.filter(is_active=True).count(),
-            "candidateCount": Profile.objects.filter(role=Profile.ROLE_CANDIDATE).count(),
-            "recruiterCount": Profile.objects.filter(role=Profile.ROLE_RECRUITER).count(),
-            "pendingRecruiters": Profile.objects.filter(
-                role=Profile.ROLE_RECRUITER,
-                recruiter_verification_status=Profile.RECRUITER_VERIFICATION_PENDING,
+            "users": users.count(),
+            "activeUsers": users.filter(is_active=True).count(),
+            "inactiveUsers": users.filter(is_active=False).count(),
+            "adminUsers": users.filter(profile__role=Profile.ROLE_ADMIN).count(),
+            "candidates": Profile.objects.filter(role=Profile.ROLE_CANDIDATE).count(),
+            "recruiters": recruiters.count(),
+            "pendingRecruiters": recruiters.filter(
+                recruiter_verification_status=Profile.RECRUITER_VERIFICATION_PENDING
             ).count(),
-            "connectionCount": Connection.objects.count(),
+            "skills": Skill.objects.count(),
+            "projects": Project.objects.count(),
+            "experiences": Experience.objects.count(),
+            # Each friendship is saved as 2 rows (A->B and B->A), so divide by 2.
+            "connections": Connection.objects.count() // 2,
+            "pendingConnectionRequests": ConnectionRequest.objects.filter(
+                status=ConnectionRequest.STATUS_PENDING
+            ).count(),
         }
     )
 
 
+# =============================================================================
+# 3. USERS
+# =============================================================================
+
+
 @api_view(["GET"])
+@permission_classes([IsAppAdmin])
 def admin_users_view(request):
-    permission_error = require_admin(request)
-    if permission_error:
-        return permission_error
-
-    users = User.objects.select_related("profile").order_by("-date_joined")
-    return Response([serialize_user(user) for user in users])
+    users = admin_users().order_by("-date_joined")
+    return Response(AdminUserSerializer(users, many=True).data)
 
 
 @api_view(["PATCH"])
+@permission_classes([IsAppAdmin])
 def admin_user_status_view(request, user_id):
-    permission_error = require_admin(request)
-    if permission_error:
-        return permission_error
+    """Switch an account on or off."""
+    serializer = UserStatusSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
 
-    try:
-        target_user = User.objects.get(id=user_id)
-    except User.DoesNotExist:
-        return Response({"message": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+    user = get_target_user(request, user_id)
 
-    target_user.is_active = bool(request.data.get("is_active"))
-    target_user.save(update_fields=["is_active"])
+    user.is_active = serializer.validated_data["is_active"]
+    user.save(update_fields=["is_active"])
 
-    create_admin_log(
-        actor=request.user,
-        target_user=target_user,
-        action="user_status_updated",
-        description=f"Updated user status for {target_user.email}.",
-        metadata={"is_active": target_user.is_active},
+    state = "Activated" if user.is_active else "Deactivated"
+    log_action(
+        request,
+        action=ACTION_USER_ACTIVATED if user.is_active else ACTION_USER_DEACTIVATED,
+        description=f"{state} {user.email}",
+        target_user=user,
+        metadata={"is_active": user.is_active},
     )
-
-    data = serialize_user(target_user)
-    data["message"] = "User status updated successfully."
-    return Response(data)
+    return user_response(user.pk, "User status updated successfully.")
 
 
 @api_view(["PATCH"])
+@permission_classes([IsAppAdmin])
 def admin_user_role_view(request, user_id):
-    permission_error = require_admin(request)
-    if permission_error:
-        return permission_error
+    """
+    Change a user's role. "admin" gives them the admin page. It does NOT
+    make them Django staff: the built-in Django site stays for developers.
+    """
+    serializer = UserRoleSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    new_role = serializer.validated_data["role"]
 
-    role = request.data.get("role")
+    user = get_target_user(request, user_id)
 
-    if role not in [Profile.ROLE_CANDIDATE, Profile.ROLE_RECRUITER, Profile.ROLE_ADMIN]:
-        return Response({"message": "Invalid role."}, status=status.HTTP_400_BAD_REQUEST)
+    profile, _created = Profile.objects.get_or_create(user=user)
+    old_role = profile.role
 
-    try:
-        target_user = User.objects.select_related("profile").get(id=user_id)
-    except User.DoesNotExist:
-        return Response({"message": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    profile = target_user.profile
-    profile.role = role
+    profile.role = new_role
     profile.save(update_fields=["role"])
 
-    create_admin_log(
-        actor=request.user,
-        target_user=target_user,
-        action="user_role_updated",
-        description=f"Updated role for {target_user.email}.",
-        metadata={"role": role},
+    log_action(
+        request,
+        action=ACTION_ROLE_CHANGED,
+        description=f"Changed role of {user.email} from {old_role} to {new_role}",
+        target_user=user,
+        metadata={"previous_role": old_role, "new_role": new_role},
     )
-
-    data = serialize_user(target_user)
-    data["message"] = "User role updated successfully."
-    return Response(data)
+    return user_response(user.pk, "User role updated successfully.")
 
 
 @api_view(["PATCH"])
+@permission_classes([IsAppAdmin])
 def admin_recruiter_verification_view(request, user_id):
-    permission_error = require_admin(request)
-    if permission_error:
-        return permission_error
+    """Approve or reject a recruiter (only approved recruiters can connect)."""
+    serializer = RecruiterVerificationSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    new_status = serializer.validated_data["status"]
 
-    verification_status = request.data.get("status")
-
-    if verification_status not in [
-        Profile.RECRUITER_VERIFICATION_APPROVED,
-        Profile.RECRUITER_VERIFICATION_REJECTED,
-    ]:
-        return Response(
-            {"message": "Invalid recruiter verification status."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    try:
-        target_user = User.objects.select_related("profile").get(id=user_id)
-    except User.DoesNotExist:
-        return Response({"message": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    profile = target_user.profile
+    user = get_object_or_404(User, pk=user_id)
+    profile, _created = Profile.objects.get_or_create(user=user)
 
     if profile.role != Profile.ROLE_RECRUITER:
         return Response(
@@ -192,176 +237,218 @@ def admin_recruiter_verification_view(request, user_id):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    profile.recruiter_verification_status = verification_status
-    profile.save(update_fields=["recruiter_verification_status"])
+    profile.recruiter_verification_status = new_status
+    profile.recruiter_verification_note = serializer.validated_data.get("note", "")
+    profile.save(update_fields=["recruiter_verification_status", "recruiter_verification_note"])
 
-    create_admin_log(
-        actor=request.user,
-        target_user=target_user,
-        action="recruiter_verification_updated",
-        description=f"Updated recruiter verification for {target_user.email}.",
-        metadata={"status": verification_status},
+    log_action(
+        request,
+        action=ACTION_RECRUITER_VERIFICATION,
+        description=f"{'Approved' if new_status == Profile.RECRUITER_VERIFICATION_APPROVED else 'Rejected'} recruiter {user.email}",
+        target_user=user,
+        metadata={"status": new_status},
     )
+    return user_response(user.pk, "Recruiter verification updated.")
 
-    return Response(serialize_user(target_user))
+
+# =============================================================================
+# 4. CONNECTIONS
+# =============================================================================
 
 
 @api_view(["GET"])
+@permission_classes([IsAppAdmin])
 def admin_connections_view(request):
-    permission_error = require_admin(request)
-    if permission_error:
-        return permission_error
-
-    connections = Connection.objects.select_related(
-        "user", "connected_user"
-    ).order_by("-created_at")
-
-    return Response([serialize_connection(connection) for connection in connections])
+    """
+    Every connection, listed ONCE (A-B, not also B-A).
+    `user_id < connected_user_id` keeps just one of the two rows.
+    """
+    connections = (
+        Connection.objects.filter(
+            user_id__lt=F("connected_user_id"),
+            user__in=network_users(),
+            connected_user__in=network_users(),
+        )
+        .select_related("user", "user__profile", "connected_user", "connected_user__profile")
+        .order_by("-created_at")
+    )
+    return Response(AdminConnectionSerializer(connections, many=True).data)
 
 
 @api_view(["POST"])
+@permission_classes([IsAppAdmin])
 def admin_connect_users_view(request):
-    permission_error = require_admin(request)
-    if permission_error:
-        return permission_error
+    serializer = ConnectUsersSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    user = serializer.validated_data["user"]
+    other = serializer.validated_data["connected_user"]
 
-    user_id = request.data.get("userId")
-    connected_user_id = request.data.get("connectedUserId")
+    with transaction.atomic():
+        connect_users(user, other)  # shared rule: saves both rows
+        requests_between(user, other).delete()  # old requests aren't needed now
 
-    if not user_id or not connected_user_id or user_id == connected_user_id:
-        return Response(
-            {"message": "Please select two different users."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    try:
-        first_user = User.objects.get(id=user_id)
-        second_user = User.objects.get(id=connected_user_id)
-    except User.DoesNotExist:
-        return Response({"message": "User not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    first_connection, _ = Connection.objects.get_or_create(
-        user=first_user,
-        connected_user=second_user,
+    log_action(
+        request,
+        action=ACTION_CONNECTION_CREATED,
+        description=f"Connected {user.email} and {other.email}",
+        target_user=user,
+        metadata={"user_id": user.pk, "connected_user_id": other.pk},
     )
 
-    Connection.objects.get_or_create(
-        user=second_user,
-        connected_user=first_user,
-    )
-
-    create_admin_log(
-        actor=request.user,
-        target_user=first_user,
-        action="connection_created",
-        description=f"Created connection between {first_user.email} and {second_user.email}.",
-        metadata={"connected_user_id": second_user.id},
-    )
-
-    return Response(serialize_connection(first_connection), status=status.HTTP_201_CREATED)
+    connection = Connection.objects.select_related(
+        "user", "user__profile", "connected_user", "connected_user__profile"
+    ).get(user=user, connected_user=other)
+    return Response(AdminConnectionSerializer(connection).data, status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])
+@permission_classes([IsAppAdmin])
 def admin_disconnect_users_view(request):
-    permission_error = require_admin(request)
-    if permission_error:
-        return permission_error
+    serializer = UserPairSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    user = serializer.validated_data["user"]
+    other = serializer.validated_data["connected_user"]
 
-    user_id = request.data.get("userId")
-    connected_user_id = request.data.get("connectedUserId")
-
-    deleted_count, _ = Connection.objects.filter(
-        Q(user_id=user_id, connected_user_id=connected_user_id)
-        | Q(user_id=connected_user_id, connected_user_id=user_id)
-    ).delete()
-
-    create_admin_log(
-        actor=request.user,
-        action="connection_removed",
-        description="Removed managed connection.",
-        metadata={
-            "user_id": user_id,
-            "connected_user_id": connected_user_id,
-            "deleted_count": deleted_count,
-        },
-    )
-
-    return Response({"message": "Connection removed successfully."})
-
-
-@api_view(["GET"])
-def admin_audit_logs_view(request):
-    permission_error = require_admin(request)
-    if permission_error:
-        return permission_error
-
-    logs = AdminActionLog.objects.select_related("actor", "target_user")[:50]
-
-    return Response(
-        [
-            {
-                "id": log.id,
-                "actorName": log.actor.get_full_name() if log.actor else "System",
-                "targetUserName": (
-                    log.target_user.get_full_name() if log.target_user else ""
-                ),
-                "action": log.action,
-                "description": log.description,
-                "createdAt": log.created_at,
-            }
-            for log in logs
-        ]
-    )
-
-
-@api_view(["GET"])
-def admin_ui_content_view(request):
-    permission_error = require_admin(request)
-    if permission_error:
-        return permission_error
-
-    items = UiContent.objects.order_by("key")
-
-    return Response([serialize_ui_content(item) for item in items])
-
-
-@api_view(["PATCH"])
-def admin_ui_content_detail_view(request, key):
-    permission_error = require_admin(request)
-    if permission_error:
-        return permission_error
-
-    value = request.data.get("value")
-
-    if not isinstance(value, str):
+    # Shared rule: removes both rows AND old requests, so they can reconnect later.
+    if not disconnect_users(user, other):
         return Response(
-            {"message": "UI content value is required."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    try:
-        item = UiContent.objects.get(key=key)
-    except UiContent.DoesNotExist:
-        return Response(
-            {"message": "UI content key not found."},
+            {"message": "These users are not connected."},
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    old_value = item.value
-    item.value = value
-    item.save(update_fields=["value"])
+    log_action(
+        request,
+        action=ACTION_CONNECTION_REMOVED,
+        description=f"Disconnected {user.email} and {other.email}",
+        target_user=user,
+        metadata={"user_id": user.pk, "connected_user_id": other.pk},
+    )
+    return Response({"message": "Connection removed successfully."})
 
-    create_admin_log(
-        actor=request.user,
-        action="ui_content_updated",
-        description=f"Updated UI content: {item.key}.",
-        metadata={
-            "key": item.key,
-            "old_value": old_value,
-            "new_value": item.value,
-        },
+
+# =============================================================================
+# 5. AUDIT LOG
+# =============================================================================
+
+
+@api_view(["GET"])
+@permission_classes([IsAppAdmin])
+def admin_audit_logs_view(request):
+    logs = AdminActionLog.objects.select_related("actor", "target_user")[:AUDIT_LOG_LIMIT]
+    return Response(AdminAuditLogSerializer(logs, many=True).data)
+
+
+# =============================================================================
+# 5b. MY ADMIN PROFILE (what *I* have done, from the audit log)
+# =============================================================================
+
+
+def daily_activity(actions, days):
+    """
+    One entry per day for the last `days` days, oldest first, even on days
+    with nothing: [{"date": "2026-11-03", "count": 4}, ...].
+    The database does the counting (one query), not Python.
+    """
+    today = timezone.localdate()
+    first_day = today - timedelta(days=days - 1)
+
+    per_day = (
+        actions.filter(created_at__date__gte=first_day)
+        .annotate(day=TruncDate("created_at"))
+        .values("day")
+        .annotate(count=Count("id"))
+    )
+    counts = {row["day"]: row["count"] for row in per_day}
+
+    return [
+        {"date": day.isoformat(), "count": counts.get(day, 0)}
+        for day in (first_day + timedelta(days=offset) for offset in range(days))
+    ]
+
+
+def current_streak(activity):
+    """How many days in a row (up to today) had at least one action."""
+    streak = 0
+    for day in reversed(activity):
+        if day["count"] == 0:
+            # A quiet TODAY doesn't break the streak yet: the day isn't over.
+            if streak == 0 and day is activity[-1]:
+                continue
+            break
+        streak += 1
+    return streak
+
+
+@api_view(["GET"])
+@permission_classes([IsAppAdmin])
+def admin_me_view(request):
+    """Numbers for the signed-in admin's own profile page."""
+    mine = AdminActionLog.objects.filter(actor=request.user)
+    verifications = mine.filter(action=ACTION_RECRUITER_VERIFICATION)
+    activity = daily_activity(mine, ACTIVITY_DAYS)
+    recent = mine.select_related("actor", "target_user")[:MY_RECENT_ACTIONS]
+
+    return Response(
+        {
+            "memberSince": request.user.date_joined,
+            "lastSignIn": request.user.last_login,
+            "impact": {
+                "totalActions": mine.count(),
+                "recruitersApproved": verifications.filter(
+                    metadata__status=Profile.RECRUITER_VERIFICATION_APPROVED
+                ).count(),
+                "recruitersRejected": verifications.filter(
+                    metadata__status=Profile.RECRUITER_VERIFICATION_REJECTED
+                ).count(),
+                # Different people, not clicks: switching Ali off and on is 1.
+                "accountsManaged": mine.filter(
+                    action__in=[ACTION_USER_ACTIVATED, ACTION_USER_DEACTIVATED, ACTION_ROLE_CHANGED]
+                )
+                .values("target_user")
+                .distinct()
+                .count(),
+                "connectionsMade": mine.filter(action=ACTION_CONNECTION_CREATED).count(),
+                "textsEdited": mine.filter(action=ACTION_UI_CONTENT_UPDATED).count(),
+            },
+            "activity": activity,
+            "activeDays": sum(1 for day in activity if day["count"]),
+            "streak": current_streak(activity),
+            "recent": AdminAuditLogSerializer(recent, many=True).data,
+        }
     )
 
-    data = serialize_ui_content(item)
+
+# =============================================================================
+# 6. UI CONTENT (editable texts)
+# =============================================================================
+
+
+@api_view(["GET"])
+@permission_classes([IsAppAdmin])
+def admin_ui_content_view(request):
+    items = UiContent.objects.order_by("key")
+    return Response(AdminUiContentSerializer(items, many=True).data)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAppAdmin])
+def admin_ui_content_detail_view(request, key):
+    item = get_object_or_404(UiContent, key=key)
+
+    serializer = UiContentUpdateSerializer(data=request.data, context={"key": key})
+    serializer.is_valid(raise_exception=True)
+
+    old_value = item.value
+    item.value = serializer.validated_data["value"]
+    item.save(update_fields=["value"])
+
+    log_action(
+        request,
+        action=ACTION_UI_CONTENT_UPDATED,
+        description=f"Updated UI text: {item.key}",
+        metadata={"key": item.key, "old_value": old_value, "new_value": item.value},
+    )
+
+    data = dict(AdminUiContentSerializer(item).data)
     data["message"] = "UI content updated."
     return Response(data)

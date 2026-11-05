@@ -1,18 +1,17 @@
 "use client";
 
-import {
-  getExperienceDuration,
-  type Experience,
-} from "./experienceTypes";
+import { getExperienceDuration, type Experience } from "./experienceTypes";
 
 type ExperienceCardProps = {
   experience: Experience;
+  busy: boolean; // true while something is saving: buttons are switched off
   onEdit: (experience: Experience) => void;
   onDelete: (experienceId: number) => void;
 };
 
 export default function ExperienceCard({
   experience,
+  busy,
   onEdit,
   onDelete,
 }: ExperienceCardProps) {
@@ -29,7 +28,6 @@ export default function ExperienceCard({
 
       <div className="experience-meta">
         <span>{getExperienceDuration(experience)}</span>
-
         {experience.location && <span>{experience.location}</span>}
       </div>
 
@@ -42,6 +40,7 @@ export default function ExperienceCard({
           type="button"
           className="btn-outline btn-sm"
           onClick={() => onEdit(experience)}
+          disabled={busy}
         >
           Edit
         </button>
@@ -50,6 +49,8 @@ export default function ExperienceCard({
           type="button"
           className="btn-danger-outline btn-sm"
           onClick={() => onDelete(experience.id)}
+          disabled={busy}
+          aria-label={`Delete ${experience.title} at ${experience.company}`}
         >
           Delete
         </button>

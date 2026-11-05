@@ -25,3 +25,64 @@ Run Django migrations against PostgreSQL only:
 ```bat
 python manage.py migrate
 ```
+
+## First-time setup (your laptop)
+
+```bat
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env          &:: then fill in your real values
+python manage.py migrate
+python manage.py createcachetable  &:: table that remembers rate-limit counts
+python manage.py create_admin      &:: your app admin (asks email, name, password)
+python manage.py runserver
+```
+
+## Admins: two different kinds
+
+| | App admin | Django admin (developers only) |
+|---|---|---|
+| Made with | `python manage.py create_admin` | `python manage.py createsuperuser` |
+| Signs in at | the app's normal **Sign in** page | `http://localhost:8000/admin/` |
+| Can do | approve recruiters, switch accounts on/off, change roles, connect people, edit page texts | edit raw database rows |
+| Can sign in to the app? | yes | no (it's refused, on purpose) |
+
+Other commands:
+
+```bat
+python manage.py create_admin --email ali@site.com --promote   &:: make an existing account an admin
+python manage.py changepassword ali@site.com                   &:: new password (the username is the email)
+```
+
+On the app's admin page, admins can also make other people admins
+(Users tab, Role). That never gives them the Django site.
+
+## Running the tests
+
+```bat
+python manage.py test
+```
+
+Tests use a temporary in-memory SQLite database (see `config/settings.py`),
+so they never touch your real PostgreSQL data. Only the last line matters:
+`OK` means everything passed.
+
+## Deploying (for example on Render)
+
+Build command:
+
+```bash
+pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate && python manage.py createcachetable
+```
+
+Start command:
+
+```bash
+gunicorn config.wsgi:application
+```
+
+- `collectstatic` gathers CSS/JS (like the Django admin styles). WhiteNoise serves them.
+- Set `DJANGO_DEBUG=False` and all other values from `.env.example` in Render's environment settings.
+- **Uploaded CVs need a persistent disk or cloud storage.** Render wipes the normal disk on every deploy.
+

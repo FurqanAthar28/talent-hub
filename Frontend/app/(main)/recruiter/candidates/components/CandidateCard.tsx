@@ -1,73 +1,65 @@
 import Link from "next/link";
+import { Briefcase, FolderGit2, MapPin } from "lucide-react";
 
+import { Avatar, Badge } from "@/app/components/ui";
+import { ROUTES } from "@/app/config/routes";
 import type { RecruiterCandidate } from "@/app/services/recruiter/candidates";
+import styles from "../candidates.module.css";
 
-type CandidateCardProps = {
-  candidate: RecruiterCandidate;
-};
+// Show this many skills, then "+3 more".
+const VISIBLE_SKILLS = 5;
 
-export default function CandidateCard({ candidate }: CandidateCardProps) {
-  const visibleSkills = candidate.skills.slice(0, 5);
-  const remainingSkillsCount = candidate.skills.length - visibleSkills.length;
+/** One candidate in the results list: who, where, top skills, and a button. */
+export default function CandidateCard({ candidate }: { candidate: RecruiterCandidate }) {
+  const visibleSkills = candidate.skills.slice(0, VISIBLE_SKILLS);
+  const hiddenCount = candidate.skills.length - visibleSkills.length;
+  const profileLink = ROUTES.RECRUITER_CANDIDATE(candidate.id);
 
   return (
-    <article className="ats-candidate-card">
-      <div className="ats-candidate-top">
-        <div className="ats-candidate-identity">
-          <div className="ats-candidate-avatar">
-            {candidate.fullName.charAt(0).toUpperCase()}
-          </div>
+    <li className={styles.candidate}>
+      <Avatar name={candidate.fullName} size={48} />
 
-          <div>
-            <h2>{candidate.fullName}</h2>
-            <p>{candidate.headline || "No headline added yet"}</p>
-          </div>
+      <div>
+        <Link href={profileLink} className={styles.name}>
+          {candidate.fullName}
+          {candidate.openToWork && <Badge tone="success">Open to work</Badge>}
+        </Link>
+        <p className={styles.headline}>{candidate.headline || "No headline yet"}</p>
+
+        <div className={styles.meta}>
+          {candidate.location && (
+            <span className={styles.metaItem}>
+              <MapPin size={13} aria-hidden="true" />
+              {candidate.location}
+            </span>
+          )}
+          <span className={styles.metaItem}>
+            <FolderGit2 size={13} aria-hidden="true" />
+            {candidate.projectsCount} {candidate.projectsCount === 1 ? "project" : "projects"}
+          </span>
+          <span className={styles.metaItem}>
+            <Briefcase size={13} aria-hidden="true" />
+            {candidate.experiencesCount} {candidate.experiencesCount === 1 ? "job" : "jobs"}
+          </span>
         </div>
 
-        {candidate.openToWork && (
-          <span className="status-pill success">Open to work</span>
-        )}
-      </div>
+        {candidate.bio && <p className={styles.bio}>{candidate.bio}</p>}
 
-      <div className="ats-candidate-location">
-        {candidate.location || "Location not added"}
-      </div>
-
-      <p className="ats-candidate-summary">
-        {candidate.bio || "No bio added yet."}
-      </p>
-
-      <div className="ats-skill-list">
-        {visibleSkills.length > 0 ? (
-          <>
+        {visibleSkills.length > 0 && (
+          <div className={styles.skills}>
             {visibleSkills.map((skill) => (
-              <span key={skill} className="skill-pill">
+              <span key={skill} className={styles.skill}>
                 {skill}
               </span>
             ))}
-
-            {remainingSkillsCount > 0 && (
-              <span className="skill-pill">+{remainingSkillsCount} more</span>
-            )}
-          </>
-        ) : (
-          <span className="muted-text">No skills added yet</span>
+            {hiddenCount > 0 && <span className={`${styles.skill} ${styles.skillMore}`}>+{hiddenCount} more</span>}
+          </div>
         )}
       </div>
 
-      <div className="ats-candidate-footer">
-        <div className="candidate-stats">
-          <span>{candidate.projectsCount} projects</span>
-          <span>{candidate.experiencesCount} experiences</span>
-        </div>
-
-        <Link
-          href={`/recruiter/candidates/${candidate.id}`}
-          className="btn-primary"
-        >
-          View Profile
-        </Link>
-      </div>
-    </article>
+      <Link href={profileLink} className={`btn-outline btn-sm ${styles.candidateAction}`}>
+        View profile
+      </Link>
+    </li>
   );
 }

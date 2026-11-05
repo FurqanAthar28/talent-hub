@@ -1,20 +1,19 @@
-// app/(main)/recruiter/candidates/components/EmptyCandidates.tsx
+import { SearchX } from "lucide-react";
 
-type EmptyCandidatesProps = {
-  onClearFilters: () => void;
-};
+import { EmptyState } from "@/app/components/ui";
 
-export default function EmptyCandidates({ onClearFilters }: EmptyCandidatesProps) {
+/** No results: say so, and offer the quickest fix. */
+export default function EmptyCandidates({ onClearFilters }: { onClearFilters: () => void }) {
   return (
-    <section className="card empty-state">
-      <h2>No candidates found</h2>
-      <p>
-        Try changing your search, skill, location, or open-to-work filters.
-      </p>
-
-      <button type="button" className="secondary-button" onClick={onClearFilters}>
-        Clear filters
-      </button>
-    </section>
+    <EmptyState
+      icon={SearchX}
+      title="No candidates match these filters"
+      text="Try a broader skill, another city, or clear the filters to see everyone."
+      action={
+        <button type="button" className="btn-primary" onClick={onClearFilters}>
+          Clear filters
+        </button>
+      }
+    />
   );
 }

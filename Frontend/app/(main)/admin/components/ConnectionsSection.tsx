@@ -1,185 +1,126 @@
+import { Link2 } from "lucide-react";
+
+import { Avatar, EmptyState, Panel, ui } from "@/app/components/ui";
 import type { AdminConnection, AdminUser } from "../types";
-import type { UiContent } from "../../../api/ui-content";
+import styles from "../admin.module.css";
+
+type TextFn = (key: string, fallback: string) => string;
 
 type Props = {
-  uiContent: UiContent;
-  networkUsers: AdminUser[];
+  text: TextFn;
+  networkUsers: AdminUser[]; // only people who may connect
   connections: AdminConnection[];
-
   firstUserId: string;
   secondUserId: string;
-
-  setFirstUserId: React.Dispatch<React.SetStateAction<string>>;
-  setSecondUserId: React.Dispatch<React.SetStateAction<string>>;
-
-  connectionSaving: boolean;
-  disconnectLoading: number | null;
-
-  createManagedConnection: () => Promise<void>;
-  disconnectManagedConnection: (
-    connection: AdminConnection
-  ) => Promise<void>;
-
+  setFirstUserId: (value: string) => void;
+  setSecondUserId: (value: string) => void;
+  saving: boolean;
+  removingId: number | null;
+  onConnect: () => void;
+  onDisconnect: (connection: AdminConnection) => void;
   formatDate: (value: string | null) => string;
 };
 
+/** Connect two people by hand, and see or remove existing connections. */
 export default function ConnectionsSection({
-  uiContent,
+  text,
   networkUsers,
   connections,
   firstUserId,
   secondUserId,
   setFirstUserId,
   setSecondUserId,
-  connectionSaving,
-  disconnectLoading,
-  createManagedConnection,
-  disconnectManagedConnection,
+  saving,
+  removingId,
+  onConnect,
+  onDisconnect,
   formatDate,
 }: Props) {
+  const userOptions = (excludedUserId: string) =>
+    networkUsers
+      .filter((user) => String(user.id) !== excludedUserId)
+      .map((user) => (
+        <option key={user.id} value={user.id}>
+          {user.fullName || user.email} ({user.role})
+        </option>
+      ));
+
+  const handleFirstUserChange = (value: string) => {
+    if (value && value === secondUserId) return;
+    setFirstUserId(value);
+  };
+
+  const handleSecondUserChange = (value: string) => {
+    if (value && value === firstUserId) return;
+    setSecondUserId(value);
+  };
+
   return (
-    <div className="card">
-      <div className="card-header">
-        <h3>{uiContent.adminConnectionManagement}</h3>
-        <p className="muted text-sm">
-          {uiContent.adminConnectionManagementIntro}
-        </p>
-      </div>
-
-      <div className="card-body">
-        <div className="admin-connection-controls">
-          <div className="form-group">
-            <label>{uiContent.adminFirstUser}</label>
-
-            <select
-              value={firstUserId}
-              onChange={(event) => setFirstUserId(event.target.value)}
-            >
-              <option value="">
-                {uiContent.adminSelectUser}
-              </option>
-
-              {networkUsers.map((user) => (
-                <option
-                  key={user.id}
-                  value={user.id}
-                >
-                  {user.fullName} -{" "}
-                  {user.role === "candidate"
-                    ? uiContent.candidate
-                    : uiContent.recruiter}
-                </option>
-              ))}
+    <div className={ui.stack}>
+      <Panel
+        title={text("adminConnectionManagement", "Connect two people")}
+        hint={text("adminConnectionManagementIntro", "Only active candidates and approved recruiters are listed.")}
+      >
+        <div className={styles.connectForm}>
+          <label className={styles.field}>
+            {text("adminFirstUser", "First person")}
+            <select className={styles.select} value={firstUserId} onChange={(event) => handleFirstUserChange(event.target.value)}>
+              <option value="">{text("adminSelectUser", "Choose someone")}</option>
+              {userOptions(secondUserId)}
             </select>
-          </div>
-
-          <div className="form-group">
-            <label>{uiContent.adminSecondUser}</label>
-
-            <select
-              value={secondUserId}
-              onChange={(event) => setSecondUserId(event.target.value)}
-            >
-              <option value="">
-                {uiContent.adminSelectUser}
-              </option>
-
-              {networkUsers.map((user) => (
-                <option
-                  key={user.id}
-                  value={user.id}
-                >
-                  {user.fullName} -{" "}
-                  {user.role === "candidate"
-                    ? uiContent.candidate
-                    : uiContent.recruiter}
-                </option>
-              ))}
+          </label>
+          <label className={styles.field}>
+            {text("adminSecondUser", "Second person")}
+            <select className={styles.select} value={secondUserId} onChange={(event) => handleSecondUserChange(event.target.value)}>
+              <option value="">{text("adminSelectUser", "Choose someone")}</option>
+              {userOptions(firstUserId)}
             </select>
-          </div>
-
+          </label>
           <button
             type="button"
             className="btn-primary"
-            onClick={createManagedConnection}
-            disabled={connectionSaving}
+            onClick={onConnect}
+            disabled={saving || !firstUserId || !secondUserId || firstUserId === secondUserId}
           >
-            {connectionSaving
-              ? uiContent.adminCreatingConnection
-              : uiContent.adminCreateConnection}
+            {saving ? text("adminCreatingConnection", "Connecting...") : text("adminCreateConnection", "Connect them")}
           </button>
         </div>
+      </Panel>
 
-        <div className="admin-connection-list">
-          {connections.length === 0 ? (
-            <p className="text-center muted">
-              {uiContent.adminNoConnections}
-            </p>
-          ) : (
-            connections.map((connection) => (
-              <div
-                key={connection.id}
-                className="admin-connection-row"
-              >
-                <div>
-                  <div className="font-semibold">
+      <Panel flush title={`${connections.length} ${connections.length === 1 ? "connection" : "connections"}`}>
+        {connections.length === 0 ? (
+          <EmptyState icon={Link2} title={text("adminNoConnections", "No connections yet")} />
+        ) : (
+          <ul className={ui.list}>
+            {connections.map((connection) => (
+              <li key={connection.id} className={ui.row}>
+                <div className={styles.pair}>
+                  <span className={styles.pairPerson}>
+                    <Avatar name={connection.userName} size={32} />
                     {connection.userName}
-                  </div>
-
-                  <div className="text-sm muted">
-                    {connection.userEmail}
-                  </div>
-
-                  <span className="status-badge">
-                    {connection.userRole === "candidate"
-                      ? uiContent.candidate
-                      : uiContent.recruiter}
                   </span>
-                </div>
-
-                <div className="admin-connection-arrow">
-                  +
-                </div>
-
-                <div>
-                  <div className="font-semibold">
+                  <span className={styles.pairLink} aria-label="is connected to">
+                    <Link2 size={16} aria-hidden="true" />
+                  </span>
+                  <span className={styles.pairPerson}>
+                    <Avatar name={connection.connectedUserName} size={32} />
                     {connection.connectedUserName}
-                  </div>
-
-                  <div className="text-sm muted">
-                    {connection.connectedUserEmail}
-                  </div>
-
-                  <span className="status-badge">
-                    {connection.connectedUserRole === "candidate"
-                      ? uiContent.candidate
-                      : uiContent.recruiter}
                   </span>
                 </div>
-
-                <div className="text-sm muted">
-                  {formatDate(connection.createdAt)}
-                </div>
-
+                <span className={styles.count}>Since {formatDate(connection.createdAt)}</span>
                 <button
                   type="button"
-                  className="btn-outline btn-sm"
-                  onClick={() =>
-                    disconnectManagedConnection(connection)
-                  }
-                  disabled={
-                    disconnectLoading === connection.id
-                  }
+                  className="btn-danger-outline btn-sm"
+                  onClick={() => onDisconnect(connection)}
+                  disabled={removingId === connection.id}
                 >
-                  {disconnectLoading === connection.id
-                    ? uiContent.adminDisconnecting
-                    : uiContent.adminDisconnect}
+                  {removingId === connection.id ? text("adminDisconnecting", "Removing...") : text("adminDisconnect", "Remove")}
                 </button>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
     </div>
   );
 }

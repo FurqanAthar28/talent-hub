@@ -1,0 +1,61 @@
+{% comment %}
+  The designed version of the "your code" email.
+
+  WHY IT LOOKS OLD-FASHIONED (tables, style="..." on every tag):
+  Email apps like Gmail and Outlook ignore most modern CSS, <style> blocks
+  and external files. Tables with inline styles are the safe way to make an
+  email look the same everywhere.
+
+  Values come from send_otp_email() in accounts/views.py.
+  {{ ... }} is escaped automatically, so text can never break the HTML.
+{% endcomment %}<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ heading }}</title>
+  </head>
+  <body style="margin:0; padding:0; background-color:#f3f4f6; font-family:Arial, Helvetica, sans-serif; color:#111827;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f3f4f6; padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; background-color:#ffffff; border-radius:12px; overflow:hidden; border:1px solid #e5e7eb;">
+
+            <!-- Top bar with the app name -->
+            <tr>
+              <td style="background-color:#0a66c2; padding:20px 32px; color:#ffffff; font-size:20px; font-weight:bold;">
+                {{ app_name }}
+              </td>
+            </tr>
+
+            <!-- Message -->
+            <tr>
+              <td style="padding:32px;">
+                <h1 style="margin:0 0 12px; font-size:22px; color:#111827;">{{ heading }}</h1>
+                <p style="margin:0 0 24px; font-size:15px; line-height:22px; color:#374151;">{{ intro }}</p>
+
+                <!-- The code, big and easy to read -->
+                <div style="text-align:center; margin:0 0 24px;">
+                  <span style="display:inline-block; padding:14px 24px; background-color:#f3f4f6; border-radius:8px; font-size:32px; font-weight:bold; letter-spacing:8px; color:#111827; font-family:'Courier New', Courier, monospace;">{{ code }}</span>
+                </div>
+
+                <p style="margin:0 0 8px; font-size:14px; color:#374151;">
+                  This code expires in <strong>{{ minutes }} minutes</strong>. Never share it with anyone.
+                </p>
+                <p style="margin:0; font-size:13px; line-height:20px; color:#6b7280;">{{ ignore_note }}</p>
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td style="padding:16px 32px; border-top:1px solid #e5e7eb; font-size:12px; color:#9ca3af;">
+                This is an automatic message from {{ app_name }}. Please don't reply to this email.
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

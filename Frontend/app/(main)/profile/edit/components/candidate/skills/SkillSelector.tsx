@@ -1,48 +1,52 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { getSkillOptions } from "@/app/services/skills";
+/**
+ * The "Search and add a skill..." box.
+ *
+ * Type to filter the suggested skills, then click one (or press Enter to
+ * add the first match). If your skill isn't in the list, you can add it
+ * as typed with the "Add ..." button.
+ */
 
-type Skill = {
-  id: number;
-  name: string;
-};
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+
+import { getSkillOptions, type Skill } from "@/app/services/skills";
 
 type SkillSelectorProps = {
-  skills: Skill[];
-  onSelect: (skillName: string) => Promise<void>;
+  skills: Skill[]; // skills I already have (we hide these from the list)
   saving: boolean;
+  // Returns true when the skill was added, so we can empty the box.
+  onSelect: (skillName: string) => Promise<boolean>;
 };
 
-export default function SkillSelector({
-  skills,
-  onSelect,
-  saving,
-}: SkillSelectorProps) {
+export default function SkillSelector({ skills, saving, onSelect }: SkillSelectorProps) {
   const [options, setOptions] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
+  // Load the suggested skills once.
   useEffect(() => {
-    async function loadSkillOptions() {
-      try {
-        const skillOptions = await getSkillOptions();
-        setOptions(skillOptions);
-      } catch {
-        setOptions([]);
-      }
-    }
+    let pageIsOpen = true;
 
-    void loadSkillOptions();
+    getSkillOptions()
+      .then((list) => {
+        if (pageIsOpen) setOptions(list);
+      })
+      .catch((err: unknown) => {
+        // Not fatal: you can still type your own skill.
+        console.warn("Skill suggestions unavailable:", err);
+      });
+
+    return () => {
+      pageIsOpen = false;
+    };
   }, []);
 
+  // Close the list when you click somewhere else on the page.
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        wrapperRef.current &&
-        !wrapperRef.current.contains(event.target as Node)
-      ) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     }
@@ -51,44 +55,45 @@ export default function SkillSelector({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const selectedSkillNames = (skills ?? []).map((skill) =>
-    skill.name.toLowerCase()
-  );
+  // Compare in lower case, so "python" and "Python" count as the same skill.
+  const typed = query.trim();
+  const typedLower = typed.toLowerCase();
+  const mySkillNames = skills.map((skill) => skill.name.toLowerCase());
 
-  const customSkillName = query.trim();
-  const normalizedCustomSkillName = customSkillName.toLowerCase();
-
-  const normalizedQuery = query.trim().toLowerCase();
-  const filteredOptions = options.filter((skill) => {
-    const alreadySelected = selectedSkillNames.includes(skill.toLowerCase());
-    const matchesSearch = skill.toLowerCase().includes(normalizedQuery);
-
-    return !alreadySelected && matchesSearch;
+  const matchingOptions = options.filter((option) => {
+    const optionLower = option.toLowerCase();
+    return !mySkillNames.includes(optionLower) && optionLower.includes(typedLower);
   });
 
-  const canAddCustomSkill =
-    customSkillName.length > 0 &&
-    !selectedSkillNames.includes(normalizedCustomSkillName) &&
-    !options.some((skill) => skill.toLowerCase() === normalizedCustomSkillName);
+  const canAddTyped =
+    typed.length > 0 &&
+    !mySkillNames.includes(typedLower) &&
+    !options.some((option) => option.toLowerCase() === typedLower);
 
-  async function handleSelectSkill(skillName: string) {
-    await onSelect(skillName);
-    setQuery("");
-    setIsOpen(false);
+  async function addSkill(skillName: string) {
+    const added = await onSelect(skillName);
+
+    // Only empty the box when it worked, so a typo can be fixed and retried.
+    if (added) {
+      setQuery("");
+      setIsOpen(false);
+    }
   }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (event.key !== "Enter" || saving) return;
-
-    event.preventDefault();
-
-    if (filteredOptions.length > 0) {
-      void handleSelectSkill(filteredOptions[0]);
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      setIsOpen(false);
       return;
     }
 
-    if (canAddCustomSkill) {
-      void handleSelectSkill(customSkillName);
+    if (event.key !== "Enter" || saving) return;
+
+    event.preventDefault(); // Enter must not submit the big profile form
+
+    if (matchingOptions.length > 0) {
+      void addSkill(matchingOptions[0]);
+    } else if (canAddTyped) {
+      void addSkill(typed);
     }
   }
 
@@ -98,6 +103,7 @@ export default function SkillSelector({
         type="text"
         value={query}
         placeholder="Search and add a skill..."
+        aria-label="Search and add a skill"
         className="skill-selector-input"
         disabled={saving}
         onChange={(event) => {
@@ -110,36 +116,34 @@ export default function SkillSelector({
 
       {isOpen && (
         <div className="skill-selector-dropdown">
-          {filteredOptions.length > 0 &&
-            filteredOptions.map((skill) => (
-              <button
-                type="button"
-                key={skill}
-                className="skill-selector-option"
-                disabled={saving}
-                onClick={() => handleSelectSkill(skill)}
-              >
-                {skill}
-              </button>
-            ))}
+          {matchingOptions.map((option) => (
+            <button
+              type="button"
+              key={option}
+              className="skill-selector-option"
+              disabled={saving}
+              onClick={() => void addSkill(option)}
+            >
+              {option}
+            </button>
+          ))}
 
-          {canAddCustomSkill ? (
+          {canAddTyped && (
             <button
               type="button"
               className="skill-selector-option"
               disabled={saving}
-              onClick={() => handleSelectSkill(customSkillName)}
+              onClick={() => void addSkill(typed)}
             >
-              Add &quot;{customSkillName}&quot;
+              Add &quot;{typed}&quot;
             </button>
-          ) : (
-            filteredOptions.length === 0 && (
-              <p className="skill-selector-empty">No matching skills found.</p>
-            )
+          )}
+
+          {matchingOptions.length === 0 && !canAddTyped && (
+            <p className="skill-selector-empty">No matching skills found.</p>
           )}
         </div>
       )}
     </div>
   );
 }
-

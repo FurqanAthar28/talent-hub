@@ -1,71 +1,37 @@
-type FormData = {
-  linkedinUrl: string;
-  githubUrl: string;
-  portfolioUrl: string;
-};
+import type { SectionProps } from "../formTypes";
 
-type Props = {
-  content: Record<string, string | undefined>;
-  formData: FormData;
-  handleChange: (
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => void;
-};
+// The 3 link boxes. Writing them as a list means one <input> pattern, not 3 copies.
+const LINKS = [
+  { name: "linkedinUrl", label: "LinkedIn URL", placeholder: "https://linkedin.com/in/..." },
+  { name: "githubUrl", label: "GitHub URL", placeholder: "https://github.com/..." },
 
-export default function SocialLinksSection({
-  content,
-  formData,
-  handleChange,
-}: Props) {
+] as const;
+
+export default function SocialLinksSection({ content, formData, handleChange }: SectionProps) {
   return (
     <section id="social" className="form-section">
       <div className="form-section-header">
-        <p className="eyebrow">Online Presence</p>
-        <h2>Professional Links</h2>
+        <p className="eyebrow">Online presence</p>
+        <h2>Professional links</h2>
         <p>Add links that help recruiters verify your work.</p>
       </div>
 
-      <div className="form-group">
-        <label>{content.linkedinUrl || "LinkedIn URL"}</label>
-        <input
-          type="text"
-          name="linkedinUrl"
-          value={formData.linkedinUrl}
-          onChange={handleChange}
-          placeholder={
-            content.linkedinUrlPlaceholder ||
-            "https://linkedin.com/in/..."
-          }
-        />
-      </div>
-
-      <div className="form-group">
-        <label>{content.githubUrl || "GitHub URL"}</label>
-        <input
-          type="text"
-          name="githubUrl"
-          value={formData.githubUrl}
-          onChange={handleChange}
-          placeholder={
-            content.githubUrlPlaceholder ||
-            "https://github.com/..."
-          }
-        />
-      </div>
-
-      <div className="form-group">
-        <label>{content.portfolioUrl || "Portfolio URL"}</label>
-        <input
-          type="text"
-          name="portfolioUrl"
-          value={formData.portfolioUrl}
-          onChange={handleChange}
-          placeholder={
-            content.portfolioUrlPlaceholder ||
-            "https://yourportfolio.com"
-          }
-        />
-      </div>
+      {LINKS.map((link) => (
+        <div className="form-group" key={link.name}>
+          <label htmlFor={`edit-${link.name}`}>{content[link.name] || link.label}</label>
+          {/* type="text" (not "url") on purpose: Django also accepts
+              "github.com/me" and adds the https:// itself. */}
+          <input
+            id={`edit-${link.name}`}
+            type="text"
+            inputMode="url"
+            name={link.name}
+            value={formData[link.name]}
+            onChange={handleChange}
+            placeholder={content[`${link.name}Placeholder`] || link.placeholder}
+          />
+        </div>
+      ))}
     </section>
   );
 }

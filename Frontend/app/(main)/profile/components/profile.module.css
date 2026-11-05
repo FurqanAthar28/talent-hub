@@ -1,0 +1,261 @@
+/*
+ * Profile page styles (used by ProfileView for every profile).
+ * Shared pieces (panels, avatar, badges) come from components/ui.
+ */
+
+.header {
+  padding: 0;
+  overflow: hidden;
+}
+
+.identity {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  padding: 28px;
+}
+
+.identityMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.name {
+  font-size: 26px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.headline {
+  margin-top: 4px;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 10px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.metaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.actions a,
+.actions button {
+  white-space: nowrap;
+}
+
+/* Numbers along the bottom of the header, split by thin lines. */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(var(--count), minmax(0, 1fr));
+  border-top: 1px solid var(--border-color);
+}
+
+.stat {
+  padding: 16px 28px;
+}
+
+.stat + .stat {
+  border-left: 1px solid var(--border-color);
+}
+
+.statValue {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statLabel {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.bio {
+  font-size: 15px;
+  line-height: 1.65;
+  white-space: pre-line; /* keep the line breaks the person typed */
+}
+
+/* Experience and projects: entries split by thin lines */
+.entries {
+  list-style: none;
+}
+
+.entry {
+  display: flex;
+  gap: 14px;
+}
+
+.entries > li + li {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border-color);
+}
+
+.entryIcon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--bg-light);
+  color: var(--text-secondary);
+}
+
+.entryTitle {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.entrySub {
+  font-size: 14px;
+}
+
+.entryMeta {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.entryText {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-line;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.tag {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--bg-light);
+  border: 1px solid var(--border-color);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.inlineLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+/* Contact rows in the side column */
+.contactList {
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.contactRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+}
+
+a.contactRow:hover {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.contactRow svg {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.contactText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cvButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.facts {
+  display: grid;
+  gap: 12px;
+}
+
+.fact {
+  display: grid;
+  font-size: 14px;
+}
+
+.factLabel {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.muted {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+@media (max-width: 640px) {
+  .identity {
+    flex-direction: column;
+    padding: 20px;
+  }
+
+  .name {
+    font-size: 22px;
+  }
+
+  .stat {
+    padding: 14px 16px;
+  }
+
+  .statValue {
+    font-size: 17px;
+  }
+}
+
+/* Admin profile: the line under the title, with a link to the admin page. */
+.adminHint {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 14px;
+}

@@ -1,91 +1,95 @@
 import Link from "next/link";
+import { Check } from "lucide-react";
 
+import BrandLogo from "./components/brand/BrandLogo";
+import ProductPreview from "./components/marketing/ProductPreview";
+import styles from "./components/marketing/marketing.module.css";
+import { APP_CONFIG } from "./config/app";
+import { ROUTES } from "./config/routes";
+
+// What each kind of user can do. Plain words, no buzzwords.
+const FOR_CANDIDATES = [
+  "Show your skills, projects and work experience on one profile.",
+  "See exactly what's missing before recruiters look at you.",
+  "Share your CV only with people you choose to connect with.",
+];
+
+const FOR_RECRUITERS = [
+  "Search candidates by skill, city, or who is open to work.",
+  "Open a candidate's projects, experience and CV in one place.",
+  "Connect and message candidates without leaving the app.",
+];
+
+function AudienceList({ items }: { items: string[] }) {
+  return (
+    <ul className={styles.audienceList}>
+      {items.map((item) => (
+        <li key={item}>
+          <Check size={18} aria-hidden="true" />
+          {item}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The public front page. Signed-in visitors use the dashboard instead. */
 export default function HomePage() {
   return (
-    <main className="home-page">
-      <nav className="home-navbar">
-        <div className="home-logo">
-          <span className="logo-box">P</span>
-          <span>ProfessionalHub</span>
-        </div>
-
-        <div className="home-nav-actions">
-          <Link href="/signin" className="btn-outline">
-            Sign In
+    <div className={styles.landing}>
+      <nav className={styles.landingNav} aria-label="Main">
+        <BrandLogo href={ROUTES.HOME} size="lg" />
+        <div className={styles.landingNavActions}>
+          <Link href={ROUTES.SIGNIN} className="btn-outline">
+            Sign in
           </Link>
-          <Link href="/signup" className="btn-primary">
-            Sign Up
+          <Link href={ROUTES.SIGNUP} className="btn-primary">
+            Create account
           </Link>
         </div>
       </nav>
 
-      <section className="home-hero-clean">
-        <div className="home-hero-content">
-          <span className="hero-badge">Professional Networking Platform</span>
-
-          <h1>Connect, showcase, and grow professionally.</h1>
-
-          <p>
-            ProfessionalHub helps users build a professional profile, connect
-            with other professionals, showcase skills, and share projects in one
-            simple platform.
-          </p>
-
-          <div className="hero-actions">
-            <Link href="/signup" className="btn-primary">
-              Get Started
-            </Link>
-            <Link href="/signin" className="btn-outline">
-              Sign In
-            </Link>
-          </div>
-        </div>
-
-        <div className="home-preview-card">
-          <div className="preview-banner"></div>
-
-          <div className="preview-body">
-            <div className="preview-avatar">A</div>
-
-            <h3>Professional Profile</h3>
-            <p>Your current headline</p>
-
-            <div className="preview-stats">
-              <div>
-                <strong>1</strong>
-                <span>Connection</span>
-              </div>
-
-              <div>
-                <strong>6</strong>
-                <span>Skills</span>
-              </div>
-
-              <div>
-                <strong>1</strong>
-                <span>Experience</span>
-              </div>
+      <main>
+        <section className={styles.hero}>
+          <div>
+            <h1 className={styles.heroTitle}>Show recruiters what you can build.</h1>
+            <p className={styles.heroText}>
+              {`${APP_CONFIG.NAME} turns your skills, projects and experience into one clear profile, and helps recruiters find the people they're looking for.`}
+            </p>
+            <div className={styles.heroActions}>
+              <Link href={ROUTES.SIGNUP} className="btn-primary">
+                Create your profile
+              </Link>
+              <Link href={ROUTES.SIGNIN} className="btn-outline">
+                Sign in
+              </Link>
             </div>
           </div>
-        </div>
-      </section>
 
-      <section className="home-features-clean">
-        <div className="feature-card">
-          <h3>Build Network</h3>
-          <p>Send and manage professional connection requests.</p>
-        </div>
+          <div className={styles.heroVisual}>
+            <ProductPreview />
+          </div>
+        </section>
 
-        <div className="feature-card">
-          <h3>Showcase Profile</h3>
-          <p>Display your headline, bio, skills, and experience.</p>
-        </div>
+        <section className={styles.audiences}>
+          <div className={styles.audiencesInner}>
+            <div>
+              <h2 className={styles.audienceTitle}>For candidates</h2>
+              <p className={styles.audienceText}>Get your profile ready, then get found.</p>
+              <AudienceList items={FOR_CANDIDATES} />
+            </div>
+            <div>
+              <h2 className={styles.audienceTitle}>For recruiters</h2>
+              <p className={styles.audienceText}>Find people by what they can actually do.</p>
+              <AudienceList items={FOR_RECRUITERS} />
+            </div>
+          </div>
+        </section>
+      </main>
 
-        <div className="feature-card">
-          <h3>Share Projects</h3>
-          <p>Add projects to present your practical work.</p>
-        </div>
-      </section>
-    </main>
+      <footer className={styles.footer}>
+        © {new Date().getFullYear()} {APP_CONFIG.NAME}
+      </footer>
+    </div>
   );
 }

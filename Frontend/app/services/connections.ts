@@ -1,4 +1,14 @@
-import { apiFetch } from "../api/client";
+/**
+ * Talking to Django about my network: people, connection requests, connections.
+ * Each function throws an Error with Django's own message when something
+ * goes wrong, so the page can simply show `error.message`.
+ */
+
+import { apiFetch, getApiMessage, readJson } from "../api/client";
+import { API_ROUTES } from "../config/apiRoutes";
+import { MESSAGES } from "../config/messages";
+
+/** How I am related to someone. "sent_pending" = I asked, they haven't answered. */
 export type RelationshipStatus =
   | "none"
   | "connected"
@@ -38,16 +48,6 @@ export type ConnectionRequest = {
   created_at: string;
 };
 
-export type AuthUser = {
-  isStaff: boolean;
-  role?: "candidate" | "recruiter" | "admin";
-};
-
-type ApiMessageResponse = {
-  message?: string;
-  error?: string;
-};
-
 export type NetworkData = {
   users: ConnectionUser[];
   receivedRequests: ConnectionRequest[];
@@ -55,77 +55,67 @@ export type NetworkData = {
   connections: ConnectionUser[];
 };
 
-export async function readApiMessage(
-  response: Response,
-  fallbackMessage: string
-) {
-  try {
-    const data = (await response.json()) as ApiMessageResponse;
-    return data.message || data.error || fallbackMessage;
-  } catch (error) {
-    console.error("Failed to read API response message:", error);
-    return fallbackMessage;
-  }
+/** Stop with Django's message (or the fallback) when the request failed. */
+async function throwIfFailed(response: Response, fallback: string) {
+  if (response.ok) return;
+
+  const data = await readJson(response);
+  throw new Error(getApiMessage(data) || fallback);
 }
 
-export async function fetchAuthenticatedUser() {
-  const response = await apiFetch("/accounts/me");
-
-  if (!response.ok) {
-    throw new Error("Unable to verify authenticated user.");
-  }
-
-  return (await response.json()) as AuthUser;
+/** POST some JSON and stop if Django says no. */
+async function postOrThrow(path: string, body: object, fallback: string) {
+  const response = await apiFetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  await throwIfFailed(response, fallback);
+  return response;
 }
 
+/** Load the 4 lists at the same time (faster than one after another). */
 export async function fetchNetworkData(): Promise<NetworkData> {
-  const [usersResponse, receivedResponse, sentResponse, connectionsResponse] =
-    await Promise.all([
-      apiFetch("/connections/users"),
-      apiFetch("/connections/pending"),
-      apiFetch("/connections/sent"),
-      apiFetch("/connections/my-connections"),
-    ]);
-
-  if (
-    !usersResponse.ok ||
-    !receivedResponse.ok ||
-    !sentResponse.ok ||
-    !connectionsResponse.ok
-  ) {
-    throw new Error("Unable to load network data.");
-  }
-
-  const [users, receivedRequests, sentRequests, connections] = await Promise.all([
-    usersResponse.json() as Promise<ConnectionUser[]>,
-    receivedResponse.json() as Promise<ConnectionRequest[]>,
-    sentResponse.json() as Promise<ConnectionRequest[]>,
-    connectionsResponse.json() as Promise<ConnectionUser[]>,
+  const responses = await Promise.all([
+    apiFetch(API_ROUTES.CONNECTIONS.USERS),
+    apiFetch(API_ROUTES.CONNECTIONS.PENDING),
+    apiFetch(API_ROUTES.CONNECTIONS.SENT),
+    apiFetch(API_ROUTES.CONNECTIONS.MY_CONNECTIONS),
   ]);
 
+  for (const response of responses) {
+    await throwIfFailed(response, MESSAGES.NETWORK.LOAD_FAILED);
+  }
+
+  const [users, receivedRequests, sentRequests, connections] = await Promise.all(
+    responses.map((response) => response.json())
+  );
+
   return {
-    users,
-    receivedRequests,
-    sentRequests,
-    connections,
+    users: users as ConnectionUser[],
+    receivedRequests: receivedRequests as ConnectionRequest[],
+    sentRequests: sentRequests as ConnectionRequest[],
+    connections: connections as ConnectionUser[],
   };
 }
 
-export async function sendConnectionInvite(receiverId: number) {
-  return apiFetch("/connections/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ receiverId }),
-  });
+/** Ask someone to connect. Gives back the (new or re-opened) request. */
+export async function sendConnectionInvite(receiverId: number): Promise<ConnectionRequest> {
+  const response = await postOrThrow(
+    API_ROUTES.CONNECTIONS.SEND,
+    { receiverId },
+    MESSAGES.NETWORK.REQUEST_FAILED
+  );
+  return (await response.json()) as ConnectionRequest;
 }
 
+/** Accept or ignore a request someone sent me. */
 export async function updateConnectionRequest(
   requestId: number,
   action: "accept" | "reject"
-) {
-  return apiFetch(`/connections/${action}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ requestId }),
-  });
+): Promise<void> {
+  const address =
+    action === "accept" ? API_ROUTES.CONNECTIONS.ACCEPT : API_ROUTES.CONNECTIONS.REJECT;
+
+  await postOrThrow(address, { requestId }, MESSAGES.NETWORK.UPDATE_FAILED);
 }

@@ -1,90 +1,37 @@
-import type { UiContent } from "../../../api/ui-content";
+import { History } from "lucide-react";
+
+import { EmptyState, Panel, ui } from "@/app/components/ui";
 import type { AdminAuditLog } from "../types";
+import styles from "../admin.module.css";
 
 type Props = {
-  uiContent: UiContent;
+  title: string;
   auditLogs: AdminAuditLog[];
   formatDate: (value: string | null) => string;
 };
 
-export default function AuditLogsSection({
-  uiContent,
-  auditLogs,
-  formatDate,
-}: Props) {
+/** What admins changed, newest first: who did it, to whom, and when. */
+export default function AuditLogsSection({ title, auditLogs, formatDate }: Props) {
   return (
-    <div className="card">
-      <div className="card-header">
-        <h3>{uiContent.adminAuditLogs}</h3>
-        <p className="muted text-sm">
-          {uiContent.adminAuditLogsIntro}
-        </p>
-      </div>
-
-      <div className="card-body">
-        {auditLogs.length === 0 ? (
-          <p className="text-center muted">
-            {uiContent.adminNoAuditLogs}
-          </p>
-        ) : (
-          <div className="admin-audit-list">
-            {auditLogs.map((log) => (
-              <div
-                key={log.id}
-                className="admin-audit-row"
-              >
-                <div>
-                  <div className="text-sm muted">
-                    {uiContent.adminAuditAction}
-                  </div>
-
-                  <div className="font-semibold">
-                    {log.description}
-                  </div>
-
-                  <div className="text-xs muted">
-                    {log.action}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-sm muted">
-                    {uiContent.adminAuditActor}
-                  </div>
-
-                  <div>{log.actorName}</div>
-
-                  <div className="text-xs muted">
-                    {log.actorEmail}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-sm muted">
-                    {uiContent.adminAuditTarget}
-                  </div>
-
-                  <div>{log.targetUserName || "-"}</div>
-
-                  <div className="text-xs muted">
-                    {log.targetUserEmail}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="text-sm muted">
-                    {uiContent.adminAuditTime}
-                  </div>
-
-                  <div>
-                    {formatDate(log.createdAt)}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    <Panel flush title={title}>
+      {auditLogs.length === 0 ? (
+        <EmptyState icon={History} title="Nothing recorded yet" text="Admin actions like approvals and role changes appear here." />
+      ) : (
+        <ul className={ui.list}>
+          {auditLogs.map((log) => (
+            <li key={log.id} className={styles.logRow}>
+              <span>{log.description}</span>
+              <span className={styles.logMeta}>
+                By {log.actorName || log.actorEmail}
+                {log.targetUserName ? `, for ${log.targetUserName}` : ""}
+              </span>
+              <time className={styles.logTime} dateTime={log.createdAt}>
+                {formatDate(log.createdAt)}
+              </time>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }

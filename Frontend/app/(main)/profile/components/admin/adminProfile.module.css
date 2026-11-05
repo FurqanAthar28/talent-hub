@@ -1,0 +1,611 @@
+/*
+ * The admin's own profile.
+ *
+ * ONE bold thing: the dark header with the 12-week activity grid. Everything
+ * under it stays quiet (same white panels as the rest of the app), so the
+ * header is what people notice and remember.
+ *
+ * The header colors are made from the app's purple (--primary-color #7c3aed):
+ * a very dark violet ("ink") and 4 purple shades for the grid.
+ */
+
+.page {
+  --ink: #1b1233;
+  --ink-line: rgba(255, 255, 255, 0.12);
+  --ink-soft: rgba(255, 255, 255, 0.68);
+  --level-0: rgba(255, 255, 255, 0.08);
+  --level-1: #4a2b98;
+  --level-2: #6d3ef0;
+  --level-3: #a685ff;
+  --level-4: #e3d7ff;
+
+  display: grid;
+  gap: 24px;
+}
+
+/* ---------- Header ---------- */
+
+.band {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 40px;
+  align-items: center;
+  padding: 36px;
+  border-radius: 16px;
+  background: var(--ink);
+  color: #fff;
+}
+
+.identity {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.avatarRing {
+  flex-shrink: 0;
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 50%;
+  background: var(--ink-line);
+}
+
+.identityMain {
+  min-width: 0;
+}
+
+.roleBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--level-1);
+  color: var(--level-4);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.name {
+  margin-top: 12px;
+  font-size: 34px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.title {
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--level-4);
+}
+
+.headline {
+  margin-top: 2px;
+  font-size: 15px;
+  color: var(--ink-soft);
+}
+
+.bandMeta {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 14px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.bandMeta li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bandActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.bandPrimary,
+.bandSecondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.bandPrimary {
+  background: #fff;
+  color: var(--ink);
+}
+
+.bandPrimary:hover {
+  background: var(--level-4);
+  text-decoration: none;
+}
+
+.bandSecondary {
+  border: 1px solid var(--ink-line);
+  color: #fff;
+}
+
+.bandSecondary:hover {
+  background: var(--ink-line);
+  text-decoration: none;
+}
+
+.bandPrimary:focus-visible,
+.bandSecondary:focus-visible {
+  outline: 2px solid var(--level-3);
+  outline-offset: 2px;
+}
+
+/* ---------- Activity grid (inside the header) ---------- */
+
+.activity {
+  padding-left: 40px;
+  border-left: 1px solid var(--ink-line);
+}
+
+.activityTitle {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.activityTitle span {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--ink-soft);
+}
+
+.gridFigure {
+  --cell: 16px; /* one day */
+  margin-top: 16px;
+}
+
+.grid {
+  display: grid;
+  grid-template-rows: repeat(7, var(--cell)); /* Mon..Sun */
+  grid-auto-flow: column; /* fill a week top to bottom, then the next week */
+  grid-auto-columns: var(--cell);
+  gap: 4px;
+}
+
+.cell {
+  display: block;
+  width: var(--cell);
+  height: var(--cell);
+  border-radius: 4px;
+  /* The one animation on this page: the weeks light up left to right, once. */
+  animation: weekIn 420ms ease-out both;
+  animation-delay: calc(var(--week, 0) * 35ms);
+}
+
+.cellGap {
+  display: block;
+}
+
+.level0 { background: var(--level-0); }
+.level1 { background: var(--level-1); }
+.level2 { background: var(--level-2); }
+.level3 { background: var(--level-3); }
+.level4 { background: var(--level-4); }
+
+@keyframes weekIn {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cell {
+    animation: none;
+  }
+}
+
+.gridCaption {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.legendCell {
+  width: 10px;
+  height: 10px;
+  animation: none;
+}
+
+.activityFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-top: 14px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.activityFacts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.activityFacts svg {
+  color: var(--level-3);
+}
+
+.gridPlaceholder {
+  width: 220px;
+  height: 140px;
+  margin-top: 14px;
+  border-radius: 8px;
+  background: var(--level-0);
+}
+
+/* ---------- Columns under the header ---------- */
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.stack {
+  display: grid;
+  gap: 24px;
+}
+
+/* ---------- Rows (waiting recruiters, recent actions) ---------- */
+
+.rows {
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 24px;
+}
+
+.row + .row {
+  border-top: 1px solid var(--border-color);
+}
+
+.rowMain {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.rowTitle {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.rowText {
+  color: var(--text-secondary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.rowActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.rowTime {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.actionIcon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--primary-light);
+  color: var(--primary-color);
+}
+
+.allClear {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 24px 24px;
+  color: var(--text-secondary);
+}
+
+.allClearIcon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #e7f6ee;
+  color: var(--success);
+}
+
+/* ---------- Your impact ---------- */
+
+.impact {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 4px;
+}
+
+.impactItem {
+  padding: 16px 0 4px;
+}
+
+/* A line above the second row, and between columns. */
+.impactItem:nth-child(n + 4) {
+  border-top: 1px solid var(--border-color);
+  margin-top: 12px;
+}
+
+.impactItem:not(:nth-child(3n + 1)) {
+  padding-left: 20px;
+  border-left: 1px solid var(--border-color);
+}
+
+.impactItem dt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.impactItem dd {
+  margin-top: 4px;
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.impactItem dd.impactZero {
+  color: var(--text-disabled);
+}
+
+/* ---------- Side column ---------- */
+
+.bio {
+  white-space: pre-line;
+  line-height: 1.6;
+}
+
+.muted {
+  color: var(--text-secondary);
+}
+
+.tools {
+  list-style: none;
+}
+
+.tools li + li {
+  border-top: 1px solid var(--border-color);
+}
+
+.tool {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  color: var(--text-primary);
+  font-weight: 400;
+}
+
+.tool:hover {
+  background: var(--bg-light);
+  text-decoration: none;
+}
+
+.tool:hover .toolTitle {
+  color: var(--primary-color);
+}
+
+.tool:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: -2px;
+}
+
+.toolIcon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--bg-light);
+  color: var(--primary-color);
+}
+
+.toolMain {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+
+.toolTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.toolText {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.toolArrow {
+  flex-shrink: 0;
+  color: var(--text-disabled);
+}
+
+.count {
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.account {
+  list-style: none;
+  display: grid;
+  gap: 16px;
+}
+
+.account li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  overflow-wrap: anywhere;
+}
+
+.account svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--text-secondary);
+}
+
+.accountLabel {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.blockPlaceholder {
+  height: 150px;
+  border-radius: 8px;
+  background: var(--bg-light);
+}
+
+/* ---------- Smaller screens ---------- */
+
+@media (max-width: 1000px) {
+  .band {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+
+  .activity {
+    padding-left: 0;
+    padding-top: 28px;
+    border-left: 0;
+    border-top: 1px solid var(--ink-line);
+  }
+}
+
+@media (max-width: 900px) {
+  .columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .band {
+    padding: 24px 20px;
+  }
+
+  .identity {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .name {
+    font-size: 28px;
+  }
+
+  .impact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 2 columns on phones: redo the lines for that layout. */
+  .impactItem:nth-child(n) {
+    border-left: 0;
+    padding-left: 0;
+    border-top: 0;
+    margin-top: 0;
+  }
+
+  .impactItem:nth-child(even) {
+    padding-left: 16px;
+    border-left: 1px solid var(--border-color);
+  }
+
+  .impactItem:nth-child(n + 3) {
+    border-top: 1px solid var(--border-color);
+    margin-top: 12px;
+  }
+
+  .row {
+    flex-wrap: wrap;
+    padding: 14px 16px;
+  }
+
+  /* globals.css stretches buttons to full width on phones; here only the
+     two row buttons share the row, and header buttons keep their size. */
+  .page :global(.btn-sm) {
+    width: auto;
+  }
+
+  .rowActions {
+    width: 100%;
+    padding-left: 54px;
+  }
+
+  .rowActions > * {
+    flex: 1;
+  }
+
+  .allClear {
+    padding: 16px;
+  }
+
+  /* 84 squares + gaps may be wider than a small phone: let it scroll sideways. */
+  .gridFigure {
+    overflow-x: auto;
+  }
+}

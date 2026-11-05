@@ -1,228 +1,185 @@
 "use client";
 
-import { useEffect, useState, Suspense } from "react";
+/**
+ * Sign-up page.
+ *
+ * Candidates must add a LinkedIn link and a CV (PDF).
+ * Recruiters must add a company name.
+ * (Django checks the same rules again, because a browser can be tricked.)
+ *
+ * After sign-up we go to /verify-email, where the user types the emailed code.
+ */
+
+import AuthShell from "../AuthShell";
+import { useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+import { getApiMessage, readJson } from "../../api/client";
+import { APP_CONFIG } from "../../config/app";
 import {
-  MAX_CV_FILE_SIZE_BYTES,
   CV_MIME_TYPE,
+  MAX_CV_FILE_SIZE_MB,
   MIN_PASSWORD_LENGTH,
   USER_ROLES,
 } from "../../config/constants";
-import { APP_CONFIG } from "../../config/app";
-import { signupUser } from "../../services/authService";
-import { parseApiError } from "../../utils/parseApiError";
-import {
-  fetchUiContent,
-  getUiContentErrorMessage,
-  type UiContent,
-} from "../../api/ui-content";
 import { MESSAGES } from "../../config/messages";
 import { ROUTES } from "../../config/routes";
+import { useUiContent } from "../../hooks/useUiContent";
+import { signupUser } from "../../services/authService";
+import { checkCvFile } from "../../utils/cvFile";
 
-function getText(
-  content: UiContent,
-  key: keyof UiContent,
-  fallback: string
-): string {
-  const value = content[key];
+// Every text box on the form. The names match what Django expects.
+const EMPTY_FORM = {
+  fullName: "",
+  email: "",
+  password: "",
+  confirmPassword: "",
+  role: USER_ROLES.CANDIDATE as string,
+  linkedinUrl: "",
+  companyName: "",
+  companyWebsite: "",
+  companyLocation: "",
+  hiringTitle: "",
+};
 
-  if (!value || value === key) {
-    return fallback;
+type FormFields = typeof EMPTY_FORM;
+
+/** Check the form before sending it. Returns an error message, or "". */
+function checkForm(form: FormFields, cvFile: File | null): string {
+  if (!form.fullName.trim() || !form.email.trim()) {
+    return MESSAGES.AUTH.MISSING_NAME_OR_EMAIL;
   }
-
-  return value;
+  if (form.password.length < MIN_PASSWORD_LENGTH) {
+    return MESSAGES.AUTH.PASSWORD_TOO_SHORT;
+  }
+  if (form.password !== form.confirmPassword) {
+    return MESSAGES.AUTH.PASSWORDS_DO_NOT_MATCH;
+  }
+  if (form.role === USER_ROLES.CANDIDATE) {
+    if (!form.linkedinUrl.trim()) return MESSAGES.AUTH.LINKEDIN_REQUIRED;
+    if (!cvFile) return MESSAGES.AUTH.CV_REQUIRED;
+  } else if (!form.companyName.trim()) {
+    return MESSAGES.AUTH.COMPANY_REQUIRED;
+  }
+  return "";
 }
 
-function SignUpContent() {
+export default function SignUpPage() {
   const router = useRouter();
+  const text = useUiContent();
 
-  const [formData, setFormData] = useState({
-    fullName: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-    role: USER_ROLES.CANDIDATE,
-    linkedinUrl: "",
-    companyName: "",
-    companyWebsite: "",
-    companyLocation: "",
-    hiringTitle: "",
-  });
-
+  const [form, setForm] = useState<FormFields>(EMPTY_FORM);
   const [cvFile, setCvFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [uiContent, setUiContent] = useState<UiContent>({});
 
-  const isCandidate = formData.role === USER_ROLES.CANDIDATE;
+  const isCandidate = form.role === USER_ROLES.CANDIDATE;
 
-  useEffect(() => {
-    async function loadUiContent() {
-      try {
-        const data = await fetchUiContent();
-        setUiContent(data);
-      } catch (error) {
-        setError(getUiContentErrorMessage(error));
-        setUiContent({});
-      }
-    }
-
-    loadUiContent();
-  }, []);
-
+  // One handler for every text box: the box's "name" says which field to update.
+  // (So each input's name MUST be spelled exactly like the field above.)
   function handleInputChange(
-    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) {
     const { name, value } = event.target;
-    setFormData((previousData) => ({ ...previousData, [name]: value }));
+    setForm((previous) => ({ ...previous, [name]: value }));
   }
 
-  function handleCvFileSelect(file: File) {
-    if (file.type !== CV_MIME_TYPE) {
-      setError(MESSAGES.AUTH.PDF_ONLY);
-      return;
-    }
-
-    if (file.size > MAX_CV_FILE_SIZE_BYTES) {
-      setError(MESSAGES.AUTH.CV_SIZE_LIMIT);
-      return;
-    }
-
-    setError("");
-    setCvFile(file);
+  function chooseCvFile(file: File) {
+    const problem = checkCvFile(file);
+    setError(problem);
+    setCvFile(problem ? null : file);
   }
 
-  function handleCvDrop(event: React.DragEvent<HTMLDivElement>) {
+  function handleCvDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
-
     const droppedFile = event.dataTransfer.files[0];
-
-    if (droppedFile) {
-      handleCvFileSelect(droppedFile);
-    }
+    if (droppedFile) chooseCvFile(droppedFile);
   }
 
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      handleSubmit();
-    }
-  }
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (loading) return; // no double sign-ups
 
-  async function handleSubmit() {
-    setError("");
-
-    if (formData.password !== formData.confirmPassword) {
-      setError(MESSAGES.AUTH.PASSWORDS_DO_NOT_MATCH);
-      return;
-    }
+    const problem = checkForm(form, cvFile);
+    setError(problem);
+    if (problem) return;
 
     setLoading(true);
 
     try {
+      // FormData (not JSON), because it can carry the CV file.
       const data = new FormData();
+      data.append("fullName", form.fullName.trim());
+      data.append("email", form.email.trim());
+      data.append("password", form.password);
+      data.append("role", form.role);
 
-      data.append("fullName", formData.fullName);
-      data.append("email", formData.email);
-      data.append("password", formData.password);
-      data.append("role", formData.role);
-      data.append("linkedinUrl", formData.linkedinUrl);
-      data.append("companyName", formData.companyName);
-      data.append("companyWebsite", formData.companyWebsite);
-      data.append("companyLocation", formData.companyLocation);
-      data.append("hiringTitle", formData.hiringTitle);
-
-      if (isCandidate && cvFile) {
-        data.append("cvFile", cvFile);
+      if (isCandidate) {
+        data.append("linkedinUrl", form.linkedinUrl.trim());
+        if (cvFile) data.append("cvFile", cvFile);
+      } else {
+        data.append("companyName", form.companyName.trim());
+        data.append("companyWebsite", form.companyWebsite.trim());
+        data.append("companyLocation", form.companyLocation.trim());
+        data.append("hiringTitle", form.hiringTitle.trim());
       }
 
-      const res = await signupUser(data);
-      const result = await res.json();
+      const response = await signupUser(data);
 
-      if (!res.ok) {
-        setError(parseApiError(result));
+      if (!response.ok) {
+        const answer = await readJson(response);
+        setError(getApiMessage(answer) || MESSAGES.AUTH.SIGNUP_FAILED);
         return;
       }
 
-      const params = new URLSearchParams({ email: formData.email });
-
-      router.replace(
-        `${getText(
-          uiContent,
-          "routeVerifyEmail",
-          "/verify-email"
-        )}?${params.toString()}`
-      );
-    } catch (error) {
-      console.error("Signup error:", error);
-      setError(MESSAGES.COMMON.SOMETHING_WENT_WRONG);
+      const params = new URLSearchParams({ email: form.email.trim() });
+      router.replace(`${ROUTES.VERIFY_EMAIL}?${params.toString()}`);
+    } catch (err) {
+      console.error("Sign-up error:", err);
+      setError(MESSAGES.COMMON.SERVER_UNREACHABLE);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="auth-page">
-      <div className="auth-card">
-        <div className="auth-card-header">
-          <Link href={ROUTES.HOME} className="auth-logo">
-            {APP_CONFIG.NAME}
-          </Link>
-
-          <h1>{getText(uiContent, "createAccountTitle", "Create account")}</h1>
-
-          <p>
-            {getText(
-              uiContent,
+    <AuthShell
+      title={text("createAccountTitle", "Create account")}
+      subtitle={text(
               "createAccountDescription",
-              "Join ProfessionalHub and build your professional profile."
+              `Join ${APP_CONFIG.NAME} and build your professional profile.`
             )}
-          </p>
-        </div>
+    >
 
-        <div className="auth-clean-form">
+        <form className="auth-clean-form" onSubmit={handleSubmit} noValidate>
           <div className="form-group">
             <label htmlFor="fullName">
-              {getText(uiContent, "fullName", "Full name")}{" "}
-              <span className="required-star">*</span>
+              {text("fullName", "Full name")} <span className="required-star">*</span>
             </label>
-
             <input
               id="fullName"
-              name="FullName"
+              name="fullName"
               type="text"
-              value={formData.fullName}
+              value={form.fullName}
               onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder={getText(
-                uiContent,
-                "fullNamePlaceholder",
-                "Enter your full name"
-              )}
+              placeholder={text("fullNamePlaceholder", "Enter your full name")}
+              autoComplete="name"
               required
             />
           </div>
 
           <div className="form-group">
             <label htmlFor="email">
-              {getText(uiContent, "email", "Email")}{" "}
-              <span className="required-star">*</span>
+              {text("email", "Email")} <span className="required-star">*</span>
             </label>
-
             <input
               id="email"
               name="email"
               type="email"
-              value={formData.email}
+              value={form.email}
               onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder={getText(
-                uiContent,
-                "emailPlaceholder",
-                "Enter your email address"
-              )}
+              placeholder={text("emailPlaceholder", "Enter your email address")}
               autoComplete="email"
               required
             />
@@ -230,255 +187,186 @@ function SignUpContent() {
 
           <div className="form-group">
             <label htmlFor="password">
-              {getText(uiContent, "password", "Password")}{" "}
-              <span className="required-star">*</span>
+              {text("password", "Password")} <span className="required-star">*</span>
             </label>
-
             <input
               id="password"
               name="password"
               type="password"
-              value={formData.password}
+              value={form.password}
               onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder={getText(
-                uiContent,
+              placeholder={text(
                 "passwordPlaceholder",
-                "Create a password"
+                `At least ${MIN_PASSWORD_LENGTH} characters`
               )}
               autoComplete="new-password"
-              required
               minLength={MIN_PASSWORD_LENGTH}
+              required
             />
           </div>
 
           <div className="form-group">
             <label htmlFor="confirmPassword">
-              {getText(uiContent, "confirmPassword", "Confirm password")}{" "}
+              {text("confirmPassword", "Confirm password")}{" "}
               <span className="required-star">*</span>
             </label>
-
             <input
               id="confirmPassword"
               name="confirmPassword"
               type="password"
-              value={formData.confirmPassword}
+              value={form.confirmPassword}
               onChange={handleInputChange}
-              onKeyDown={handleKeyDown}
-              placeholder={getText(
-                uiContent,
-                "confirmPasswordPlaceholder",
-                "Confirm your password"
-              )}
+              placeholder={text("confirmPasswordPlaceholder", "Type it again")}
               autoComplete="new-password"
-              required
               minLength={MIN_PASSWORD_LENGTH}
+              required
             />
           </div>
 
           <div className="form-group">
             <label htmlFor="role">
-              {getText(uiContent, "role", "Role")}{" "}
-              <span className="required-star">*</span>
+              {text("role", "Role")} <span className="required-star">*</span>
             </label>
-
-            <select
-              id="role"
-              name="role"
-              value={formData.role}
-              onChange={handleInputChange}
-              required
-            >
-              <option value={USER_ROLES.CANDIDATE}>
-                {getText(uiContent, "candidate", "Candidate")}
-              </option>
-              <option value={USER_ROLES.RECRUITER}>
-                {getText(uiContent, "recruiter", "Recruiter")}
-              </option>
+            <select id="role" name="role" value={form.role} onChange={handleInputChange}>
+              <option value={USER_ROLES.CANDIDATE}>{text("candidate", "Candidate")}</option>
+              <option value={USER_ROLES.RECRUITER}>{text("recruiter", "Recruiter")}</option>
             </select>
           </div>
 
-          {isCandidate && (
-            <div className="form-group">
-              <label htmlFor="linkedinUrl">
-                {getText(uiContent, "linkedinProfile", "LinkedIn profile")}{" "}
-                <span className="required-star">*</span>
-              </label>
-
-              <input
-                id="linkedinUrl"
-                name="linkedinUrl"
-                type="url"
-                value={formData.linkedinUrl}
-                onChange={handleInputChange}
-                onKeyDown={handleKeyDown}
-                placeholder={getText(
-                  uiContent,
-                  "linkedinProfilePlaceholder",
-                  "https://linkedin.com/in/your-profile"
-                )}
-                required
-              />
-            </div>
-          )}
-
-          {!isCandidate && (
-            <div className="role-specific-form">
+          {isCandidate ? (
+            <>
               <div className="form-group">
-                <label htmlFor="companyName">
-                  {getText(uiContent, "companyName", "Company name")}{" "}
+                <label htmlFor="linkedinUrl">
+                  {text("linkedinProfile", "LinkedIn profile")}{" "}
                   <span className="required-star">*</span>
                 </label>
-
                 <input
-                  id="companyName"
-                  name="companyName"
-                  type="text"
-                  value={formData.companyName}
+                  id="linkedinUrl"
+                  name="linkedinUrl"
+                  type="url"
+                  value={form.linkedinUrl}
                   onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder={getText(
-                    uiContent,
-                    "companyNamePlaceholder",
-                    "Enter company name"
+                  placeholder={text(
+                    "linkedinProfilePlaceholder",
+                    "https://linkedin.com/in/your-profile"
                   )}
                   required
                 />
               </div>
 
               <div className="form-group">
-                <label htmlFor="companyWebsite">
-                  {getText(uiContent, "companyWebsite", "Company website")}
+                <label htmlFor="cvFile">
+                  {text("uploadCv", "Upload CV")} <span className="required-star">*</span>
                 </label>
 
+                <div
+                  className="file-upload-box"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={handleCvDrop}
+                >
+                  <input
+                    id="cvFile"
+                    type="file"
+                    accept={CV_MIME_TYPE}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) chooseCvFile(file);
+                    }}
+                  />
+
+                  <p className="file-upload-title">
+                    {text("cvUploadTitle", "Upload your CV")}
+                  </p>
+                  <p className="text-xs muted mt-1">
+                    {text("cvUploadHint", `PDF only, maximum ${MAX_CV_FILE_SIZE_MB}MB.`)}
+                  </p>
+
+                  {cvFile && (
+                    <p className="text-sm mt-1 success-text">
+                      {text("selectedFileLabel", "Selected file")}: {cvFile.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="role-specific-form">
+              <div className="form-group">
+                <label htmlFor="companyName">
+                  {text("companyName", "Company name")}{" "}
+                  <span className="required-star">*</span>
+                </label>
+                <input
+                  id="companyName"
+                  name="companyName"
+                  type="text"
+                  value={form.companyName}
+                  onChange={handleInputChange}
+                  placeholder={text("companyNamePlaceholder", "Enter company name")}
+                  autoComplete="organization"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="companyWebsite">
+                  {text("companyWebsite", "Company website")}
+                </label>
                 <input
                   id="companyWebsite"
                   name="companyWebsite"
                   type="url"
-                  value={formData.companyWebsite}
+                  value={form.companyWebsite}
                   onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder={getText(
-                    uiContent,
-                    "companyWebsitePlaceholder",
-                    "https://company.com"
-                  )}
+                  placeholder={text("companyWebsitePlaceholder", "https://company.com")}
                 />
               </div>
 
               <div className="form-group">
                 <label htmlFor="companyLocation">
-                  {getText(uiContent, "companyLocation", "Company location")}
+                  {text("companyLocation", "Company location")}
                 </label>
-
                 <input
                   id="companyLocation"
                   name="companyLocation"
                   type="text"
-                  value={formData.companyLocation}
+                  value={form.companyLocation}
                   onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder={getText(
-                    uiContent,
-                    "companyLocationPlaceholder",
-                    "Enter company location"
-                  )}
+                  placeholder={text("companyLocationPlaceholder", "Enter company location")}
                 />
               </div>
 
               <div className="form-group">
-                <label htmlFor="hiringTitle">
-                  {getText(uiContent, "hiringTitle", "Hiring title")}
-                </label>
-
+                <label htmlFor="hiringTitle">{text("hiringTitle", "Hiring title")}</label>
                 <input
                   id="hiringTitle"
                   name="hiringTitle"
                   type="text"
-                  value={formData.hiringTitle}
+                  value={form.hiringTitle}
                   onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder={getText(
-                    uiContent,
-                    "hiringTitlePlaceholder",
-                    "Your hiring title"
-                  )}
+                  placeholder={text("hiringTitlePlaceholder", "Your job title")}
                 />
               </div>
             </div>
           )}
 
-          {isCandidate && (
-            <div className="form-group">
-              <label>
-                {getText(uiContent, "uploadCv", "Upload CV")}{" "}
-                <span className="required-star">*</span>
-              </label>
-
-              <div
-                className="file-upload-box"
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={handleCvDrop}
-              >
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-
-                    if (file) {
-                      handleCvFileSelect(file);
-                    }
-                  }}
-                />
-
-                <p className="file-upload-title">
-                  {getText(uiContent, "cvUploadTitle", "Upload your CV")}
-                </p>
-
-                <p className="text-xs muted mt-1">
-                  {getText(uiContent, "cvUploadHint", "PDF only, maximum 5MB.")}
-                </p>
-
-                {cvFile && (
-                  <p className="text-sm mt-1 success-text">
-                    {getText(uiContent, "selectedFileLabel", "Selected file")}:{" "}
-                    {cvFile.name}
-                  </p>
-                )}
-              </div>
+          {error && (
+            <div className="form-error mb-2" role="alert">
+              {error}
             </div>
           )}
 
-          {error && <div className="form-error mb-2">{error}</div>}
-
-          <button
-            type="button"
-            className="btn-primary btn-full"
-            disabled={loading}
-            onClick={handleSubmit}
-          >
+          <button type="submit" className="btn-primary btn-full" disabled={loading}>
             {loading
-              ? getText(uiContent, "creatingAccountButton", "Creating account...")
-              : getText(uiContent, "createAccountButton", "Create account")}
+              ? text("creatingAccountButton", "Creating account...")
+              : text("createAccountButton", "Create account")}
           </button>
 
           <p className="text-xs muted text-center mt-2">
-            {getText(uiContent, "alreadyHaveAccount", "Already have an account?")}{" "}
-            <Link href={getText(uiContent, "routeSignin", ROUTES.SIGNIN)}>
-              {getText(uiContent, "signIn", "Sign in")}
-            </Link>
+            {text("alreadyHaveAccount", "Already have an account?")}{" "}
+            <Link href={ROUTES.SIGNIN}>{text("signIn", "Sign in")}</Link>
           </p>
-        </div>
-      </div>
-    </main>
-  );
-}
-
-export default function SignUpPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <SignUpContent />
-    </Suspense>
+        </form>
+    </AuthShell>
   );
 }

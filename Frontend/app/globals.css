@@ -295,7 +295,8 @@ select {
 ======================================================= */
 .btn-primary,
 .btn-outline,
-.btn-secondary {
+.btn-secondary,
+.btn-danger-outline {
   border-radius: 24px;
   font-weight: 600;
   font-size: 14px;
@@ -511,6 +512,9 @@ select {
 .app-header .container {
   margin: 0 auto;
   width: 100%;
+  /* .app-header-inner already has the 24px side padding. Without this, the
+     menu got 48px and sat 24px further in than the page content below it. */
+  padding: 0;
 }
 
 .navbar-brand,
@@ -548,6 +552,15 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-left: auto; /* push the menu to the right, next to the account buttons */
+}
+
+/* Your initials + Logout (outside the menu, see (main)/layout.tsx). */
+.nav-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
 }
 
 .nav-link,
@@ -2827,6 +2840,7 @@ select {
 }
 
 .btn-danger-outline {
+  /* Shape and size come from the shared button rule above; only the red is here. */
   border: 1px solid rgba(220, 38, 38, 0.35);
   color: #dc2626;
   background: transparent;
@@ -3291,4 +3305,198 @@ select {
   .ats-candidate-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* =======================================================
+   Screen-reader-only text
+   Hidden on screen, but read aloud by screen readers.
+   Use it for extra words that help people who can't see the page,
+   e.g. "(done)" next to a check mark.
+======================================================= */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* =======================================================
+   Top menu on phones and small tablets
+   The menu didn't fit and ran off the right edge. Now the header has
+   two rows: logo + account on top, and the menu below it, which you can
+   swipe sideways.
+     [ in ProfessionalHub ]        [ AM ] [ Logout ]
+     [ Home  My network  Messages  Profile ]
+======================================================= */
+@media (max-width: 768px) {
+  .app-header {
+    height: auto;
+  }
+
+  .app-header-inner {
+    height: auto;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "brand account"
+      "nav nav";
+  }
+
+  .app-header-inner .brand {
+    grid-area: brand;
+    height: 64px;
+  }
+
+  .nav-account {
+    grid-area: account;
+  }
+
+  .nav {
+    grid-area: nav;
+    margin-left: 0;
+    padding-bottom: 8px;
+    overflow-x: auto; /* swipe sideways if the links don't fit */
+    scrollbar-width: none;
+  }
+
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav a {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  /* The header is ~48px taller now, so move every page down by the same amount. */
+  body {
+    padding-top: 48px;
+  }
+}
+
+/* =======================================================
+   Checkboxes and radio buttons inside forms
+   The ".form-group input" rule above makes boxes full width and 44px
+   tall, which turned every checkbox into a giant square. These keep
+   them their normal size, next to their label.
+======================================================= */
+.form-group input[type="checkbox"],
+.form-group input[type="radio"],
+.checkbox-label input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  flex-shrink: 0;
+  accent-color: var(--primary-color);
+}
+
+.checkbox-label,
+.form-group .checkbox-label {
+  /* ".form-group label" is a stronger rule, so it must be named here too */
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+/* =======================================================
+   File upload box (CV)
+   One dashed box, and the browser's plain "Choose file" button
+   restyled to look like our other buttons.
+======================================================= */
+.file-upload-box {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 24px 20px;
+  border-width: 1px;
+  background: var(--bg-light);
+}
+
+.form-group .file-upload-box input[type="file"] {
+  width: auto;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.file-upload-box input[type="file"]::file-selector-button {
+  margin-right: 12px;
+  padding: 8px 16px;
+  border: 1px solid var(--primary-color);
+  border-radius: 999px;
+  background: var(--card-color);
+  color: var(--primary-color);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.file-upload-box input[type="file"]::file-selector-button:hover {
+  background: var(--primary-light);
+}
+
+/* =======================================================
+   Edit profile sections: same panel look as the rest of the app
+   (thin border, 12px corners, no shadow, no small capital labels).
+======================================================= */
+.form-section {
+  margin-bottom: 0;
+  padding: 24px;
+  border-radius: 12px;
+  scroll-margin-top: 88px; /* jump links stop below the top menu */
+}
+
+.form-section-header h2,
+.form-section-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.form-section-header p {
+  font-size: 13px;
+}
+
+/* The small purple capital labels above section titles are gone. */
+.form-section-header .eyebrow,
+.card-header .eyebrow {
+  display: none;
+}
+
+/* Projects / experience boxes on the edit page */
+.card.form-section {
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.card.form-section .card-header {
+  padding: 20px 24px;
+}
+
+.card.form-section .card-body {
+  padding: 20px 24px;
+}
+
+.card:hover {
+  box-shadow: none; /* boxes don't "lift" when you point at them */
+}
+
+.empty-state {
+  border-style: dashed;
+  border-radius: 12px;
+  background: var(--bg-light);
+}
+
+.edit-profile-form {
+  gap: 24px;
 }

@@ -1,344 +1,336 @@
 "use client";
 
-import { useEffect, useState } from "react";
+/**
+ * Edit my profile.
+ *
+ * TWO KINDS OF SAVING ON THIS PAGE
+ * 1. The main form (name, bio, links, CV...) saves when you press "Save changes".
+ * 2. Skills, projects and experience save STRAIGHT AWAY when you add or
+ *    remove one. So they sit BELOW the main form, not inside it. (Before,
+ *    they were inside it, which made "Save changes" look like it saved them.)
+ */
+
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
-import { apiFetch } from "../../../api/client";
-import {
-  fetchUiContent,
-  getUiContentErrorMessage,
-  type UiContent,
-} from "../../../api/ui-content";
+import { apiFetch, backendUrl, errorText, getApiMessage, readJson } from "../../../api/client";
 import { API_ROUTES } from "../../../config/apiRoutes";
+import { MESSAGES } from "../../../config/messages";
 import { ROUTES } from "../../../config/routes";
-import { buildMediaUrl } from "../../../utils/media";
-
-import BasicInfoSection from "./components/candidate/BasicInfoSection";
+import { useUiContentRecord } from "../../../hooks/useUiContent";
+import type { Profile } from "../../../services/profiles";
+import { Notice, Page, ui } from "../../../components/ui";
+import styles from "./edit.module.css";
 import AboutSection from "./components/candidate/AboutSection";
-import SocialLinksSection from "./components/candidate/SocialLinksSection";
+import BasicInfoSection from "./components/candidate/BasicInfoSection";
+import ExperienceSection from "./components/candidate/experience/ExperienceSection";
+import ProjectsSection from "./components/candidate/projects/ProjectsSection";
 import ResumeSection from "./components/candidate/ResumeSection";
 import SkillsSection from "./components/candidate/skills/SkillsSection";
-import ProjectsSection from "./components/candidate/projects/ProjectsSection";
-import ExperienceSection from "./components/candidate/experience/ExperienceSection";
-import RecruiterEditProfile from "./components/recruiter/RecruiterEditProfile";
+import SocialLinksSection from "./components/candidate/SocialLinksSection";
+import DeleteAccountSection from "./components/DeleteAccountSection";
+import type { ProfileFormData } from "./components/formTypes";
+import CompanyInformationSection from "./components/recruiter/CompanyInformationSection";
 
-type Profile = {
-  role: "candidate" | "recruiter" | "admin";
-  fullName: string;
-  email: string;
-  headline?: string;
-  location?: string;
-  bio?: string;
-  linkedinUrl?: string;
-  githubUrl?: string;
-  portfolioUrl?: string;
-  companyName?: string;
-  companyWebsite?: string;
-  companyLocation?: string;
-  hiringTitle?: string;
-  adminTitle?: string;
-  cvUrl?: string;
-  profileCompletion?: number;
-  profileViewers?: number;
-  openToWork?: boolean;
-};
+/** Profile from Django -> values for the form boxes. */
+function profileToForm(profile: Profile): ProfileFormData {
+  return {
+    fullName: profile.fullName || "",
+    headline: profile.headline || "",
+    location: profile.location || "",
+    bio: profile.bio || "",
+    openToWork: profile.openToWork ?? false,
+    linkedinUrl: profile.linkedinUrl || "",
+    githubUrl: profile.githubUrl || "",
+   
+    companyName: profile.companyName || "",
+    companyWebsite: profile.companyWebsite || "",
+    companyLocation: profile.companyLocation || "",
+    hiringTitle: profile.hiringTitle || "",
+    adminTitle: profile.adminTitle || "",
+  };
+}
 
-type ApiErrorResponse = {
-  message?: string;
-  errors?: Record<string, unknown>;
-};
+/**
+ * Form values -> FormData for Django. Each role only sends its own fields.
+ * (FormData, not JSON, because it can carry the CV file.)
+ */
+function formToRequestBody(form: ProfileFormData, role: Profile["role"], cvFile: File | null) {
+  const body = new FormData();
+
+  body.append("fullName", form.fullName.trim());
+  body.append("headline", form.headline.trim());
+  body.append("location", form.location.trim());
+  body.append("bio", form.bio.trim());
+
+  if (role === "candidate") {
+    body.append("openToWork", String(form.openToWork)); // "true" or "false"
+    body.append("linkedinUrl", form.linkedinUrl.trim());
+    body.append("githubUrl", form.githubUrl.trim());
+
+    if (cvFile) body.append("cvFile", cvFile);
+  }
+
+  if (role === "recruiter") {
+    body.append("companyName", form.companyName.trim());
+    body.append("companyWebsite", form.companyWebsite.trim());
+    body.append("companyLocation", form.companyLocation.trim());
+    body.append("hiringTitle", form.hiringTitle.trim());
+  }
+
+  if (role === "admin") {
+    body.append("adminTitle", form.adminTitle.trim());
+  }
+
+  return body;
+}
 
 export default function EditProfilePage() {
   const router = useRouter();
+  const content = useUiContentRecord();
 
-  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [formData, setFormData] = useState<ProfileFormData | null>(null);
   const [cvFile, setCvFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [uiContent, setUiContent] = useState<UiContent>({});
 
-  const content = uiContent as Record<string, string | undefined>;
+  // Load my profile once and fill the form.
+  useEffect(() => {
+    let pageIsOpen = true;
 
-  const [formData, setFormData] = useState({
-    fullName: "",
-    headline: "",
-    location: "",
-    bio: "",
-    linkedinUrl: "",
-    githubUrl: "",
-    portfolioUrl: "",
-    companyName: "",
-    companyWebsite: "",
-    companyLocation: "",
-    hiringTitle: "",
-    adminTitle: "",
-  });
+    async function loadProfile() {
+      try {
+        const response = await apiFetch(API_ROUTES.PROFILES.ME);
+        const data = await readJson(response);
 
-  async function getErrorMessage(response: Response) {
-    try {
-      const data = (await response.json()) as ApiErrorResponse;
-      return data.message || content.genericError || "Something went wrong.";
-    } catch {
-      return content.genericError || "Something went wrong.";
-    }
-  }
+        if (!response.ok) throw new Error(getApiMessage(data));
+        if (!pageIsOpen) return;
 
-  async function loadProfile() {
-    setError("");
-
-    try {
-      const uiContentData = await fetchUiContent();
-      setUiContent(uiContentData);
-
-      const res = await apiFetch(API_ROUTES.PROFILES.ME);
-
-      if (!res.ok) {
-        const message = await getErrorMessage(res);
-        setError(message);
-        return;
+        const loaded = data as unknown as Profile;
+        setProfile(loaded);
+        setFormData(profileToForm(loaded));
+      } catch (loadError) {
+        if (pageIsOpen) setError(errorText(loadError, MESSAGES.PROFILE.LOAD_ERROR));
       }
-
-      const profile = await res.json();
-      setCurrentProfile(profile);
-
-      setFormData({
-        fullName: profile.fullName || "",
-        headline: profile.headline || "",
-        location: profile.location || "",
-        bio: profile.bio || "",
-        linkedinUrl: profile.linkedinUrl || "",
-        githubUrl: profile.githubUrl || "",
-        portfolioUrl: profile.portfolioUrl || "",
-        companyName: profile.companyName || "",
-        companyWebsite: profile.companyWebsite || "",
-        companyLocation: profile.companyLocation || "",
-        hiringTitle: profile.hiringTitle || "",
-        adminTitle: profile.adminTitle || "",
-      });
-    } catch (error) {
-      setError(getUiContentErrorMessage(error));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void loadProfile();
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    function scrollToHash() {
-      const hash = window.location.hash;
-
-      if (!hash) return;
-
-      const targetElement = document.querySelector(hash);
-
-      if (!targetElement) return;
-
-      setTimeout(() => {
-        targetElement.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }, 100);
     }
 
-    if (!loading) {
-      scrollToHash();
-    }
-
-    window.addEventListener("hashchange", scrollToHash);
+    void loadProfile();
 
     return () => {
-      window.removeEventListener("hashchange", scrollToHash);
+      pageIsOpen = false;
     };
-  }, [loading]);
+  }, []);
 
-  function handleChange(
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
-  ) {
-    const { name, value } = event.target;
+  // Links like /profile/edit#skills: scroll to that section once the page is drawn.
+  const isReady = formData !== null;
+  useEffect(() => {
+    if (!isReady || !window.location.hash) return;
+    document.querySelector(window.location.hash)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [isReady]);
 
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
+  
+  async function refreshProfileSummary() {
+    try {
+      const response = await apiFetch(API_ROUTES.PROFILES.ME);
+      if (response.ok) setProfile((await response.json()) as Profile);
+    } catch (refreshError) {
+      console.warn("Couldn't refresh the profile summary:", refreshError);
+    }
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
+  // One handler for every box. A checkbox gives true/false, the others give text.
+  function handleChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+    const box = event.target as HTMLInputElement;
+    const value = box.type === "checkbox" ? box.checked : box.value;
 
-    if (!currentProfile) {
-      setError(content.genericError || "Unable to update profile.");
+    setFormData((previous) => (previous ? { ...previous, [box.name]: value } : previous));
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving || !profile || !formData) return; // no double saves
+
+    if (!formData.fullName.trim()) {
+      setError(MESSAGES.PROFILE.NAME_REQUIRED);
       return;
     }
 
     setSaving(true);
+    setError("");
 
     try {
-      const profileData = new FormData();
-
-      profileData.append("fullName", formData.fullName.trim());
-      profileData.append("headline", formData.headline);
-      profileData.append("location", formData.location);
-      profileData.append("bio", formData.bio);
-
-      if (currentProfile.role === "candidate") {
-        profileData.append("linkedinUrl", formData.linkedinUrl);
-        profileData.append("githubUrl", formData.githubUrl);
-        profileData.append("portfolioUrl", formData.portfolioUrl);
-
-        if (cvFile) {
-          profileData.append("cvFile", cvFile);
-        }
-      }
-
-      if (currentProfile.role === "recruiter") {
-        profileData.append("companyName", formData.companyName);
-        profileData.append("companyWebsite", formData.companyWebsite);
-        profileData.append("companyLocation", formData.companyLocation);
-        profileData.append("hiringTitle", formData.hiringTitle);
-      }
-
-      if (currentProfile.role === "admin") {
-        profileData.append("adminTitle", formData.adminTitle);
-      }
-
-      const res = await apiFetch(API_ROUTES.PROFILES.UPDATE_ME, {
+      const response = await apiFetch(API_ROUTES.PROFILES.UPDATE_ME, {
         method: "PATCH",
-        body: profileData,
+        body: formToRequestBody(formData, profile.role, cvFile),
       });
 
-      if (!res.ok) {
-        const message = await getErrorMessage(res);
-        setError(message);
+      if (!response.ok) {
+        // Django's reason, for example "Headline: Ensure this field has no more than 120 characters."
+        const data = await readJson(response);
+        setError(getApiMessage(data) || MESSAGES.PROFILE.UPDATE_ERROR);
         return;
       }
 
-      router.push(content.routeProfile || ROUTES.PROFILE);
+      router.push(ROUTES.PROFILE);
     } catch {
-      setError(content.genericError || "Unable to save profile.");
+      setError(MESSAGES.COMMON.SERVER_UNREACHABLE);
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) {
+  if (!profile || !formData) {
     return (
-      <main className="page-shell">
-        <section className="dashboard-section">
-          <p>{content.loading || "Loading profile..."}</p>
-        </section>
+      <main className={ui.page}>
+        {error ? <Notice tone="error">{error}</Notice> : <p className="muted">{content.loading || "Loading profile..."}</p>}
       </main>
     );
   }
 
-  const currentCvUrl = currentProfile?.cvUrl
-    ? buildMediaUrl(uiContent.apiMediaPrefix, currentProfile.cvUrl)
-    : "";
+  const isCandidate = profile.role === "candidate";
+  const sectionProps = { content, formData, handleChange };
+
+  // The side menu: one link per section on this page ("#about" scrolls there).
+  const sections = [
+    { id: "information", label: "Basic details" },
+    { id: "about", label: "About" },
+    ...(isCandidate
+      ? [
+          { id: "social", label: "Links" },
+          { id: "resume", label: "CV" },
+          { id: "skills", label: "Skills" },
+          { id: "projects", label: "Projects" },
+          { id: "experience", label: "Experience" },
+        ]
+      : []),
+    ...(profile.role === "recruiter" ? [{ id: "company", label: "Company" }] : []),
+    ...(profile.role === "admin" ? [{ id: "admin", label: "Admin role" }] : []),
+  ];
 
   return (
-    <main className="page-shell">
-      <header className="page-header">
-        <p className="eyebrow">Profile Editor</p>
-        <h1>{content.editProfileTitle || "Edit Profile"}</h1>
-        <p>
-          {content.editProfileDescription ||
-            "Keep your professional information complete and up to date."}
-        </p>
-      </header>
-
-      <form onSubmit={handleSubmit} className="edit-profile-form">
-        <BasicInfoSection
-          content={content}
-          formData={formData}
-          handleChange={handleChange}
-        />
-
-        <AboutSection
-          content={content}
-          formData={formData}
-          handleChange={handleChange}
-        />
-
-        {currentProfile?.role === "candidate" && (
-          <>
-            <SocialLinksSection
-              content={content}
-              formData={formData}
-              handleChange={handleChange}
-            />
-
-            <ResumeSection
-              content={content}
-              currentCvUrl={currentCvUrl}
-              cvFile={cvFile}
-              setCvFile={setCvFile}
-            />
-
-            <SkillsSection content={content} onProfileChange={loadProfile} />
-
-            <ProjectsSection />
-
-            <ExperienceSection />
-          </>
-        )}
-
-        {currentProfile?.role === "recruiter" && (
-          <RecruiterEditProfile
-            content={content}
-            formData={formData}
-            handleChange={handleChange}
-          />
-        )}
-
-        {currentProfile?.role === "admin" && (
-          <section id="admin" className="form-section">
-            <div className="form-section-header">
-              <p className="eyebrow">Admin Profile</p>
-              <h2>Platform Role</h2>
-              <p>This information appears in admin-related areas.</p>
+    <Page
+      title={content.editProfileTitle || "Edit profile"}
+      subtitle={content.editProfileDescription || "Keep your professional information complete and up to date."}
+      actions={
+        <Link href={ROUTES.PROFILE} className="btn-outline">
+          View profile
+        </Link>
+      }
+    >
+      <div className={styles.layout}>
+        {/* ---------- Side menu ---------- */}
+        <nav className={styles.nav} aria-label="Profile sections">
+          {/* Completion is about what candidates and recruiters show others,
+              so admins don't get a bar. */}
+          {profile.role !== "admin" && (
+            <div className={styles.progress}>
+              <div className={styles.progressLabel}>
+                <span>Profile complete</span>
+                <span>{profile.profileCompletion}%</span>
+              </div>
+              <div
+                className={styles.progressTrack}
+                role="progressbar"
+                aria-valuenow={profile.profileCompletion}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Profile complete"
+              >
+                <div className={styles.progressFill} style={{ width: `${profile.profileCompletion}%` }} />
+              </div>
             </div>
+          )}
 
-            <div className="form-group">
-              <label>{content.adminTitle || "Admin Title"}</label>
-              <input
-                type="text"
-                name="adminTitle"
-                value={formData.adminTitle}
-                onChange={handleChange}
-                placeholder={content.adminTitlePlaceholder || "Platform Admin"}
-              />
+          <ul className={styles.navList}>
+            {sections.map((section) => (
+              <li key={section.id}>
+                <a href={`#${section.id}`} className={styles.navLink}>
+                  {section.label}
+                </a>
+              </li>
+            ))}
+            <li>
+              <a href="#delete-account" className={`${styles.navLink} ${styles.navDanger}`}>
+                Delete account
+              </a>
+            </li>
+          </ul>
+        </nav>
+
+        <div className={styles.content}>
+          {/* ---------- 1. The main form: saved with "Save changes" ---------- */}
+          <form onSubmit={handleSubmit} className="edit-profile-form" noValidate>
+            <BasicInfoSection {...sectionProps} showOpenToWork={isCandidate} />
+            <AboutSection {...sectionProps} />
+
+            {isCandidate && (
+              <>
+                <SocialLinksSection {...sectionProps} />
+                <ResumeSection
+                  content={content}
+                  currentCvUrl={profile.cvUrl ? backendUrl(profile.cvUrl) : ""}
+                  cvFile={cvFile}
+                  setCvFile={setCvFile}
+                />
+              </>
+            )}
+
+            {profile.role === "recruiter" && <CompanyInformationSection {...sectionProps} />}
+
+            {profile.role === "admin" && (
+              <section id="admin" className="form-section">
+                <div className="form-section-header">
+                  <h2>Platform role</h2>
+                  <p>This information appears in admin-related areas.</p>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="edit-adminTitle">{content.adminTitle || "Admin title"}</label>
+                  <input
+                    id="edit-adminTitle"
+                    type="text"
+                    name="adminTitle"
+                    value={formData.adminTitle}
+                    onChange={handleChange}
+                    placeholder={content.adminTitlePlaceholder || "Platform admin"}
+                  />
+                </div>
+              </section>
+            )}
+
+            {error && <Notice tone="error">{error}</Notice>}
+
+            <div className={styles.saveBar}>
+              <span className={styles.saveText}>Changes above are saved when you press Save.</span>
+              <div className={styles.saveActions}>
+                <Link href={ROUTES.PROFILE} className="btn-secondary">
+                  {content.cancel || "Cancel"}
+                </Link>
+                <button type="submit" className="btn-primary" disabled={saving}>
+                  {saving ? content.saving || "Saving..." : content.saveChanges || "Save changes"}
+                </button>
+              </div>
             </div>
-          </section>
-        )}
+          </form>
 
-        {error && <div className="form-error">{error}</div>}
+          {/* ---------- 2. Lists: each change saves straight away ---------- */}
+          {isCandidate && (
+            <>
+              <p className={styles.groupLabel}>
+                Skills, projects and experience save as soon as you add, edit or remove them.
+              </p>
+              <SkillsSection content={content} onProfileChange={refreshProfileSummary} />
+              <ProjectsSection onProfileChange={refreshProfileSummary} />
+              <ExperienceSection onProfileChange={refreshProfileSummary} />
+            </>
+          )}
 
-        <div className="edit-profile-actions">
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => router.push(content.routeProfile || ROUTES.PROFILE)}
-          >
-            {content.cancel || "Cancel"}
-          </button>
-
-          <button type="submit" className="btn-primary" disabled={saving}>
-            {saving
-              ? content.saving || "Saving..."
-              : content.saveChanges || "Save Changes"}
-          </button>
+          {/* ---------- 3. Danger zone: outside every form on purpose ---------- */}
+          <DeleteAccountSection />
         </div>
-      </form>
-    </main>
+      </div>
+    </Page>
   );
 }

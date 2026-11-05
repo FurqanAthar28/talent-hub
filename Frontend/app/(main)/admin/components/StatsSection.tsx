@@ -1,65 +1,61 @@
-import type { UiContent } from "../../../api/ui-content";
+import { Panel } from "@/app/components/ui";
 import type { AdminStats } from "../types";
+import styles from "../admin.module.css";
 
-type Props = {
-  stats: AdminStats;
-  uiContent: UiContent;
-};
+type TextFn = (key: string, fallback: string) => string;
 
-export default function StatsSection({
-  stats,
-  uiContent,
-}: Props) {
+/** The platform numbers, in 3 labelled groups. Every number has a label. */
+export default function StatsSection({ stats, text }: { stats: AdminStats; text: TextFn }) {
+  const groups = [
+    {
+      title: "People",
+      items: [
+        { label: text("adminUsers", "All users"), value: stats.users },
+        { label: text("adminActiveUsers", "Active"), value: stats.activeUsers },
+        { label: text("adminInactiveUsers", "Switched off"), value: stats.inactiveUsers },
+        { label: text("adminStaffUsers", "Admins"), value: stats.adminUsers },
+      ],
+    },
+    {
+      title: "Roles",
+      items: [
+        { label: "Candidates", value: stats.candidates },
+        { label: "Recruiters", value: stats.recruiters },
+        {
+          label: text("adminPendingRecruiters", "Recruiters waiting for approval"),
+          value: stats.pendingRecruiters,
+          warning: stats.pendingRecruiters > 0,
+        },
+      ],
+    },
+    {
+      title: "Activity",
+      items: [
+        { label: "Connections", value: stats.connections },
+        { label: text("adminPendingRequests", "Open connection requests"), value: stats.pendingConnectionRequests },
+        { label: text("adminSkills", "Skills added"), value: stats.skills },
+        { label: text("adminProjects", "Projects added"), value: stats.projects },
+        { label: text("adminExperiences", "Work experiences added"), value: stats.experiences },
+      ],
+    },
+  ];
+
   return (
-    <>
-      <div className="dashboard-stats">
-        <div className="dashboard-stat-card">
-          <h3>{stats.users}</h3>
-          <p>{uiContent.adminUsers}</p>
-        </div>
-
-        <div className="dashboard-stat-card">
-          <h3>{stats.activeUsers}</h3>
-          <p>{uiContent.adminActiveUsers}</p>
-        </div>
-
-        <div className="dashboard-stat-card">
-          <h3>{stats.inactiveUsers}</h3>
-          <p>{uiContent.adminInactiveUsers}</p>
-        </div>
-
-        <div className="dashboard-stat-card">
-          <h3>{stats.pendingConnectionRequests}</h3>
-          <p>{uiContent.adminPendingRequests}</p>
-        </div>
-
-        <div className="dashboard-stat-card">
-          <h3>{stats.pendingRecruiters}</h3>
-          <p>{uiContent.adminPendingRecruiters}</p>
-        </div>
-      </div>
-
-      <div className="dashboard-stats">
-        <div className="dashboard-stat-card">
-          <h3>{stats.staffUsers}</h3>
-          <p>{uiContent.adminStaffUsers}</p>
-        </div>
-
-        <div className="dashboard-stat-card">
-          <h3>{stats.skills}</h3>
-          <p>{uiContent.adminSkills}</p>
-        </div>
-
-        <div className="dashboard-stat-card">
-          <h3>{stats.projects}</h3>
-          <p>{uiContent.adminProjects}</p>
-        </div>
-
-        <div className="dashboard-stat-card">
-          <h3>{stats.experiences}</h3>
-          <p>{uiContent.adminExperiences}</p>
-        </div>
-      </div>
-    </>
+    <div className={styles.statGroups}>
+      {groups.map((group) => (
+        <Panel key={group.title} title={group.title}>
+          <ul className={styles.statList}>
+            {group.items.map((item) => (
+              <li key={item.label} className={styles.stat}>
+                <span className={styles.statLabel}>{item.label}</span>
+                <span className={`${styles.statValue} ${"warning" in item && item.warning ? styles.statValueWarning : ""}`}>
+                  {item.value.toLocaleString()}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      ))}
+    </div>
   );
 }

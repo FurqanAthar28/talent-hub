@@ -1,133 +1,97 @@
-import type { DashboardData } from "@/app/services/dashboard";
-import Link from "next/link";
+import { Briefcase, Eye, FileText, MessageSquare, UserPlus, Users } from "lucide-react";
+
+import { ROUTES } from "@/app/config/routes";
+import type { Activity } from "@/app/services/dashboard";
+import type { Profile } from "@/app/services/profiles";
+import styles from "../../dashboard.module.css";
+import ActivityTimeline from "../common/ActivityTimeline";
+import FactStrip from "../common/FactStrip";
+import ProfileReadiness from "../common/ProfileReadiness";
+import ShortcutList from "../common/ShortcutList";
 
 type CandidateDashboardProps = {
-  data: DashboardData;
+  profile: Profile;
+  activities: Activity[];
 };
 
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-}
-
-export default function CandidateDashboard({
-  data,
-}: CandidateDashboardProps) {
-  const completedSections = [
-    data.skillsCount > 0,
-    data.projectsCount > 0,
-    data.experiencesCount > 0,
-  ].filter(Boolean).length;
-
+/**
+ * A candidate's home page.
+ * Top: how ready the profile is (the thing that matters most for getting found).
+ * Then: 3 facts, where to go next, and recent activity.
+ */
+export default function CandidateDashboard({ profile, activities }: CandidateDashboardProps) {
   return (
-    <div className="dashboard-linkedin-layout dashboard-home-layout">
-      <aside className="dashboard-profile-panel">
-        <div className="dashboard-profile-cover" />
-        <div className="dashboard-profile-body">
-          <div className="dashboard-avatar">{getInitials(data.fullName)}</div>
-          <h2>{data.fullName}</h2>
-          <p>{data.headline}</p>
-          <span className={data.openToWork ? "status-badge status-success" : "status-badge status-muted"}>
-            {data.openToWork ? "Open to work" : "Not actively looking"}
-          </span>
+    <>
+      <ProfileReadiness
+        percent={profile.profileCompletion}
+        checklist={profile.completionChecklist}
+        audience="recruiters"
+      />
+
+      <div className={styles.columns}>
+        <div className={styles.stack}>
+          <FactStrip
+            facts={[
+              {
+                icon: Eye,
+                value: profile.profileViewers,
+                label: profile.profileViewers === 1 ? "person viewed your profile" : "people viewed your profile",
+              },
+              {
+                icon: Users,
+                value: profile.connectionsCount,
+                label: profile.connectionsCount === 1 ? "connection" : "connections",
+                href: ROUTES.CONNECTIONS,
+              },
+              profile.openToWork
+                ? {
+                    icon: Briefcase,
+                    value: "Open to work",
+                    label: "Recruiters can filter for you",
+                    positive: true,
+                  }
+                : {
+                    icon: Briefcase,
+                    value: "Not looking",
+                    label: "Turn on “open to work”",
+                    href: `${ROUTES.PROFILE_EDIT}#information`,
+                  },
+            ]}
+          />
+
+          <ShortcutList
+            title="Next steps"
+            shortcuts={[
+              {
+                icon: UserPlus,
+                title: "Grow your network",
+                text: "Connect with people and recruiters in your field.",
+                href: ROUTES.CONNECTIONS,
+              },
+              {
+                icon: MessageSquare,
+                title: "Messages",
+                text: "Pick up your conversations where you left off.",
+                href: ROUTES.MESSAGES,
+              },
+              {
+                icon: FileText,
+                title: profile.cvUrl ? "Update your CV" : "Upload your CV",
+                text: "Recruiters you connect with can open it from your profile.",
+                href: `${ROUTES.PROFILE_EDIT}#resume`,
+              },
+              {
+                icon: Eye,
+                title: "See your public profile",
+                text: "Check what other people see.",
+                href: ROUTES.PROFILE,
+              },
+            ]}
+          />
         </div>
 
-        <div className="dashboard-panel-list">
-          <div>
-            <span>Profile strength</span>
-            <strong>{data.profileCompletion}%</strong>
-          </div>
-          <div>
-            <span>Portfolio sections</span>
-            <strong>{completedSections}/3</strong>
-          </div>
-        </div>
-      </aside>
-
-      <section className="dashboard-main-column">
-        <article className="dashboard-work-card">
-          <div className="dashboard-work-header">
-            <div>
-              <p className="eyebrow">Profile readiness</p>
-              <h2>Make your profile easier to discover</h2>
-            </div>
-            <strong>{data.profileCompletion}%</strong>
-          </div>
-
-          <progress className="progress-bar" value={data.profileCompletion} max={100} />
-
-          <div className="dashboard-checklist">
-            <Link href="/profile/edit#skills" className={data.skillsCount > 0 ? "done" : ""}>
-              <span>Skills</span>
-              <strong>{data.skillsCount}</strong>
-            </Link>
-            <Link href="/profile/edit#projects" className={data.projectsCount > 0 ? "done" : ""}>
-              <span>Projects</span>
-              <strong>{data.projectsCount}</strong>
-            </Link>
-            <Link href="/profile/edit#experience" className={data.experiencesCount > 0 ? "done" : ""}>
-              <span>Experience</span>
-              <strong>{data.experiencesCount}</strong>
-            </Link>
-          </div>
-        </article>
-
-        <section className="dashboard-section dashboard-signal-section">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <p className="eyebrow">Visibility</p>
-              <h2>Profile signals</h2>
-            </div>
-          </div>
-
-          <div className="dashboard-signal-grid">
-            <div>
-              <span>Skills</span>
-              <strong>{data.skillsCount}</strong>
-            </div>
-            <div>
-              <span>Projects</span>
-              <strong>{data.projectsCount}</strong>
-            </div>
-            <div>
-              <span>Experience</span>
-              <strong>{data.experiencesCount}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section className="dashboard-section">
-          <div className="section-header dashboard-section-header">
-            <div>
-              <p className="eyebrow">Next steps</p>
-              <h2>Keep your professional presence active</h2>
-            </div>
-          </div>
-
-          <div className="dashboard-action-list">
-            <Link href="/profile/edit#information" className="dashboard-action-row">
-              <span>Update profile headline and location</span>
-              <strong>Improve profile</strong>
-            </Link>
-            <Link href="/profile/edit#resume" className="dashboard-action-row">
-              <span>Upload or replace your latest resume</span>
-              <strong>Manage resume</strong>
-            </Link>
-            <Link href="/connections" className="dashboard-action-row">
-              <span>Find professionals and recruiters to connect with</span>
-              <strong>Grow network</strong>
-            </Link>
-            <Link href="/messages" className="dashboard-action-row">
-              <span>Continue your professional conversations</span>
-              <strong>Open inbox</strong>
-            </Link>
-          </div>
-        </section>
-      </section>
-    </div>
+        <ActivityTimeline activities={activities} />
+      </div>
+    </>
   );
 }

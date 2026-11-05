@@ -1,87 +1,87 @@
 "use client";
 
+/**
+ * The frame around every signed-in page: the top menu + the page itself.
+ *
+ * It does 3 jobs:
+ *   1. Asks Django "who is signed in?" once, and shares the answer with
+ *      every page (see CurrentUserContext.tsx).
+ *   2. Sends you to the sign-in page if your login has run out
+ *      (apiFetch announces this with `unauthorizedEventName`).
+ *   3. Shows the menu, with the right links for your role.
+ */
+
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { apiFetch, unauthorizedEventName } from "../api/client";
-import {
-  fetchUiContent,
-  getUiContentErrorMessage,
-  type UiContent,
-} from "../api/ui-content";
 import { API_ROUTES } from "../config/apiRoutes";
+import { MESSAGES } from "../config/messages";
 import { ROUTES } from "../config/routes";
+import BrandLogo from "../components/brand/BrandLogo";
+import { useUiContent } from "../hooks/useUiContent";
+import { CurrentUserContext, isAdmin, type CurrentUser } from "./CurrentUserContext";
 
-type AuthUser = {
-  id: number;
-  email: string;
-  username: string;
-  fullName: string;
-  isStaff: boolean;
-  role?: string;
-};
+/** "Ali Khan" -> "AK" */
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
 
-export default function MainLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function MainLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const text = useUiContent();
 
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [uiContent, setUiContent] = useState<UiContent>({});
-  const [loggingOut, setLoggingOut] = useState(false);
+  const [user, setUser] = useState<CurrentUser | null>(null);
   const [loadError, setLoadError] = useState("");
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  const routeSignin = uiContent.routeSignin || ROUTES.SIGNIN;
-  const routeDashboard = uiContent.routeDashboard || ROUTES.DASHBOARD;
-  const routeAdmin = uiContent.routeAdmin || ROUTES.ADMIN;
-  const routeConnections = uiContent.routeConnections || ROUTES.CONNECTIONS;
-  const routeMessages = uiContent.routeMessages || ROUTES.MESSAGES;
-  const routeProfile = uiContent.routeProfile || ROUTES.PROFILE;
-
+  // 1. Who is signed in?
   useEffect(() => {
-    async function checkUser() {
+    let pageIsOpen = true;
+
+    async function loadUser() {
       try {
-        const uiContentData = await fetchUiContent();
-        setUiContent(uiContentData);
+        const response = await apiFetch(API_ROUTES.ACCOUNTS.ME);
 
-        const res = await apiFetch(API_ROUTES.ACCOUNTS.ME);
-
-        if (!res.ok) {
-          router.push(uiContentData.routeSignin || ROUTES.SIGNIN);
+        if (!response.ok) {
+          router.replace(ROUTES.SIGNIN);
           return;
         }
 
-        const data = await res.json();
-        setUser(data);
+        const data = (await response.json()) as CurrentUser;
+        if (pageIsOpen) setUser(data);
       } catch (error) {
-        console.error("Failed to load authenticated user:", error);
-        setLoadError(getUiContentErrorMessage(error));
-      } finally {
-        setLoading(false);
+        console.error("Failed to load the signed-in user:", error);
+        if (pageIsOpen) setLoadError(MESSAGES.COMMON.SERVER_UNREACHABLE);
       }
     }
 
-    checkUser();
-  }, [router]);
-
-  useEffect(() => {
-    function redirectToSignin() {
-      router.replace(routeSignin);
-    }
-
-    window.addEventListener(unauthorizedEventName, redirectToSignin);
+    void loadUser();
 
     return () => {
-      window.removeEventListener(unauthorizedEventName, redirectToSignin);
+      pageIsOpen = false;
     };
-  }, [router, routeSignin]);
+  }, [router]);
+
+  // 2. Login ran out somewhere in the app -> go to sign in.
+  useEffect(() => {
+    function goToSignin() {
+      router.replace(ROUTES.SIGNIN);
+    }
+
+    window.addEventListener(unauthorizedEventName, goToSignin);
+    return () => window.removeEventListener(unauthorizedEventName, goToSignin);
+  }, [router]);
 
   async function handleLogout() {
+    if (loggingOut) return;
     setLoggingOut(true);
 
     try {
@@ -89,106 +89,89 @@ export default function MainLayout({
     } catch (error) {
       console.error("Failed to log out:", error);
     } finally {
-      router.push(routeSignin);
+      // replace (not push): the Back button can't return to a private page.
+      router.replace(ROUTES.SIGNIN);
     }
   }
 
-  if (loading) return null;
   if (loadError) {
     return (
       <div className="app-main">
         <div className="container">
           <div className="card">
             <div className="card-body text-center">
-              <p className="form-error">{loadError}</p>
+              <p className="form-error" role="alert">
+                {loadError}
+              </p>
             </div>
           </div>
         </div>
       </div>
     );
   }
-  if (!user) return null;
 
-  const userRole = user.role || (user.isStaff ? "admin" : "user");
-  const isAdmin = userRole === "admin";
-  const isRecruiter = userRole === "recruiter";
-  const initials = (user.fullName || user.email || "U")
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+  if (!user) {
+    return (
+      <div className="app-main">
+        <div className="container">{text("loading", "Loading...")}</div>
+      </div>
+    );
+  }
+
+  const admin = isAdmin(user);
+
+  // "Profile" stays highlighted on /profile/edit too.
+  // (Someone else's profile, /profile/5, is not "my" profile.)
+  function isActive(href: string) {
+    if (href === ROUTES.PROFILE) {
+      return pathname === ROUTES.PROFILE || pathname.startsWith(ROUTES.PROFILE_EDIT);
+    }
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
+
+  // The menu, in order. `show` decides who sees each link.
+  const menu = [
+    { href: ROUTES.DASHBOARD, label: text("home", "Home"), show: !admin },
+    { href: ROUTES.CONNECTIONS, label: text("myNetwork", "My network"), show: !admin },
+    { href: ROUTES.RECRUITER_CANDIDATES, label: "Candidates", show: user.role === "recruiter" },
+    { href: ROUTES.MESSAGES, label: text("messages", "Messages"), show: !admin },
+    { href: ROUTES.PROFILE, label: "Profile", show: !admin },
+    { href: ROUTES.ADMIN, label: text("admin", "Admin"), show: admin },
+  ];
 
   return (
-    <>
+    <CurrentUserContext.Provider value={user}>
       <header className="app-header">
         <div className="container">
           <div className="app-header-inner">
-            <Link
-              href={isAdmin ? routeAdmin : routeDashboard}
-              className="brand"
-            >
-              <span className="brand-mark">in</span>
-              <span>{uiContent.appName || "ProfessionalHub"}</span>
-            </Link>
+            <BrandLogo href={admin ? ROUTES.ADMIN : ROUTES.DASHBOARD} />
 
-            <nav className="nav">
-              {!isAdmin && (
-                <Link
-                  href={routeDashboard}
-                  className={pathname === routeDashboard ? "active" : ""}
-                >
-                  {uiContent.home || "Home"}
-                </Link>
-              )}
+            <nav className="nav" aria-label="Main menu">
+              {menu
+                .filter((item) => item.show)
+                .map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={isActive(item.href) ? "active" : ""}
+                    aria-current={isActive(item.href) ? "page" : undefined}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+            </nav>
 
-              {!isAdmin && (
-                <Link
-                  href={routeConnections}
-                  className={pathname === routeConnections ? "active" : ""}
-                >
-                  {uiContent.myNetwork || "My Network"}
-                </Link>
-              )}
-
-              {isRecruiter && (
-                <Link
-                  href="/recruiter/candidates"
-                  className={pathname.startsWith("/recruiter/candidates") ? "active" : ""}
-                >
-                  Candidates
-                </Link>
-              )}
-
-              {!isAdmin && (
-                <Link
-                  href={routeMessages}
-                  className={pathname === routeMessages ? "active" : ""}
-                >
-                  {uiContent.messages || "Messages"}
-                </Link>
-              )}
-
-              {!isAdmin && (
-                <Link
-                  href={routeProfile}
-                  className={pathname === routeProfile ? "active" : ""}
-                >
-                  Profile
-                </Link>
-              )}
-
-              {isAdmin && (
-                <Link
-                  href={routeAdmin}
-                  className={pathname === routeAdmin ? "active" : ""}
-                >
-                  {uiContent.admin || "Admin"}
-                </Link>
-              )}
-
-              <div className="nav-user-chip" aria-label={user.fullName || user.email}>
-                <span>{initials}</span>
+            {/* Kept apart from the menu, so on phones the menu can scroll
+                sideways while these stay put (see .nav-account in globals.css). */}
+            <div className="nav-account">
+              {/* role="img" + aria-label: screen readers say the full name, not "AK". */}
+              <div
+                className="nav-user-chip"
+                role="img"
+                aria-label={user.fullName || user.email}
+                title={user.fullName || user.email}
+              >
+                <span>{getInitials(user.fullName || user.email || "U")}</span>
               </div>
 
               <button
@@ -197,16 +180,14 @@ export default function MainLayout({
                 className="nav-logout"
                 disabled={loggingOut}
               >
-                {loggingOut
-                  ? uiContent.loggingOut || "Logging out..."
-                  : uiContent.logout || "Logout"}
+                {loggingOut ? text("loggingOut", "Logging out...") : text("logout", "Logout")}
               </button>
-            </nav>
+            </div>
           </div>
         </div>
       </header>
 
       {children}
-    </>
+    </CurrentUserContext.Provider>
   );
 }

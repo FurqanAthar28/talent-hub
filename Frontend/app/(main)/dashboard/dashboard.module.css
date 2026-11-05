@@ -1,0 +1,505 @@
+/*
+ * Dashboard styles.
+ *
+ * This is a CSS MODULE: Next.js renames every class (".panel" becomes
+ * something like ".dashboard_panel__x7f2"), so these styles can never clash
+ * with globals.css or other pages. Colors come from the shared tokens in
+ * globals.css (var(--primary-color) ...), so the dashboard matches the app.
+ *
+ * Design rules for this page:
+ *   - every number appears ONCE
+ *   - boxes have a thin border and no shadow (shadows on everything look cheap)
+ *   - purple is only for things you can click or things that are "done"
+ */
+
+/* ---------- Page frame (same width as the top menu) ---------- */
+
+.shell {
+  max-width: 1128px;
+  margin: 88px auto 56px;
+  padding: 0 24px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.greeting {
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+
+.headerActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.headerActions a {
+  white-space: nowrap; /* "View profile" stays on one line */
+}
+
+/* Main column + side column. One column on small screens. */
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  margin-top: 24px;
+}
+
+.stack {
+  display: grid;
+  gap: 24px;
+}
+
+/* ---------- A plain box ---------- */
+
+.panel {
+  background: var(--card-color);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.panelTitle {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.panelHint {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* ---------- Profile readiness (the candidate's main element) ---------- */
+
+.readiness {
+  padding: 28px;
+}
+
+.readinessTitle {
+  font-size: 22px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.readinessMeta {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* The bar: one piece per checklist item. --count is set in the component. */
+.checklist {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(var(--count), minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 20px;
+}
+
+.checkItem {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-disabled);
+}
+
+.checkItem::before {
+  content: "";
+  height: 8px;
+  border-radius: 4px;
+  background: var(--primary-light);
+}
+
+.checkItemDone {
+  color: var(--text-primary);
+}
+
+.checkItemDone::before {
+  background: var(--primary-color);
+}
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.missing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+.missingLabel {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-right: 4px;
+}
+
+/* A small rounded link, e.g. "Add CV". Also used for skill shortcuts. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--card-color);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chip:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+/* ---------- Facts: one strip, split into equal parts ---------- */
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0;
+  overflow: hidden;
+}
+
+.fact {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 20px 24px;
+  color: var(--text-primary);
+  font-weight: 400;
+}
+
+.fact + .fact {
+  border-left: 1px solid var(--border-color);
+}
+
+a.fact:hover {
+  background: var(--bg-light);
+  text-decoration: none;
+}
+
+.factIcon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--text-secondary);
+}
+
+.factValue {
+  display: block;
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+/* Words (like "Open to work") are a bit smaller than numbers, so the row stays even. */
+.factValueText {
+  font-size: 17px;
+  line-height: 26px;
+}
+
+.factLabel {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.factPositive {
+  color: var(--success);
+}
+
+/* ---------- Shortcuts: a list of rows ---------- */
+
+.links {
+  list-style: none;
+  margin-top: 12px;
+}
+
+.links li + li {
+  border-top: 1px solid var(--border-color);
+}
+
+.linkRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 4px;
+  color: var(--text-primary);
+  font-weight: 400;
+}
+
+.linkRow:hover {
+  text-decoration: none;
+}
+
+.linkRow:hover .linkTitle {
+  color: var(--primary-color);
+}
+
+.linkIcon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--bg-light);
+  color: var(--primary-color);
+}
+
+.linkTitle {
+  display: block;
+  font-weight: 600;
+}
+
+.linkText {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* ---------- Activity timeline (a real sequence, newest first) ---------- */
+
+.timeline {
+  list-style: none;
+  margin-top: 16px;
+  border-left: 2px solid var(--border-color);
+  padding-left: 18px;
+  display: grid;
+  gap: 18px;
+}
+
+.timelineItem {
+  position: relative;
+}
+
+.timelineItem::before {
+  content: "";
+  position: absolute;
+  left: -24px;
+  top: 6px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--card-color);
+  border: 2px solid var(--primary-color);
+}
+
+.timelineTitle {
+  display: block;
+  font-size: 14px;
+}
+
+.timelineTime {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.empty {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* ---------- Recruiter: candidate search ---------- */
+
+.search {
+  padding: 28px;
+}
+
+.searchTitle {
+  font-size: 22px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.searchForm {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  height: 48px;
+  padding: 0 16px 0 44px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 15px;
+  background: var(--card-color)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")
+    no-repeat 16px center;
+}
+
+.searchInput:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.searchButton {
+  height: 48px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--primary-color);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.searchButton:hover {
+  background: var(--primary-hover);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* ---------- Status message (e.g. recruiter waiting for approval) ---------- */
+
+.status {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 28px;
+}
+
+.statusIcon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #fef3c7;
+  color: var(--warning);
+}
+
+.statusIconBad {
+  background: #fee2e2;
+  color: var(--danger);
+}
+
+.statusNote {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--bg-light);
+  font-size: 14px;
+}
+
+/* ---------- Loading placeholders ---------- */
+
+.placeholder {
+  height: 120px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #ecebe8 0%, #f6f5f3 50%, #ecebe8 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .placeholder {
+    animation: none;
+  }
+}
+
+/* ---------- Keyboard focus: always visible ---------- */
+
+.chip:focus-visible,
+.fact:focus-visible,
+.linkRow:focus-visible,
+.searchButton:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+/* ---------- Smaller screens ---------- */
+
+@media (max-width: 900px) {
+  .columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    padding: 0 16px;
+  }
+
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .greeting {
+    font-size: 24px;
+  }
+
+  /* Too narrow for a label under every piece: show just the bar. */
+  .checkLabel {
+    display: none;
+  }
+
+  .checklist {
+    gap: 3px;
+  }
+
+  .facts {
+    grid-template-columns: 1fr;
+  }
+
+  .fact + .fact {
+    border-left: 0;
+    border-top: 1px solid var(--border-color);
+  }
+
+  .searchForm {
+    flex-direction: column;
+  }
+}

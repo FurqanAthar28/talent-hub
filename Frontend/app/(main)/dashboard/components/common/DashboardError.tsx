@@ -1,18 +1,13 @@
-type DashboardErrorProps = {
-  message: string;
-};
+import styles from "../../dashboard.module.css";
 
-export default function DashboardError({
-  message,
-}: DashboardErrorProps) {
+/** Shown when the dashboard can't load. Says what happened and what to do. */
+export default function DashboardError({ message }: { message: string }) {
   return (
-    <main className="page-shell">
-      <section className="page-header">
-        <div>
-          <p className="eyebrow">Dashboard</p>
-          <h1>Something went wrong</h1>
-          <p>{message}</p>
-        </div>
+    <main className={styles.shell}>
+      <section className={styles.panel} role="alert">
+        <h1 className={styles.panelTitle}>Your dashboard didn&apos;t load</h1>
+        <p className={styles.panelHint}>{message}</p>
+        <p className={styles.panelHint}>Check your connection, then refresh the page.</p>
       </section>
     </main>
   );
