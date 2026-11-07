@@ -25,30 +25,44 @@ HEADLINE_MAX_LENGTH = 255
 HEADLINE_BIO_MAX_TOKENS = 500
 JOB_DRAFT_MAX_TOKENS = 600
 
+# Low = the model sticks to the facts it was given instead of getting creative.
+# Small models invent things easily, so this matters more than with big ones.
+AI_TEMPERATURE = 0.2
+
 # Must match the job form's limits (Backend/jobs/models.py).
 JOB_TITLE_MIN_LENGTH = 3
 JOB_DESCRIPTION_MIN_LENGTH = 30
 SKILL_MAX_LENGTH = 60  # LIST_ITEM_MAX_LENGTH in Frontend/app/config/constants.ts
 
 HEADLINE_BIO_SYSTEM_PROMPT = """You write profile text for a professional network.
-Use only facts in the JSON. Never invent employers, degrees, years, achievements,
-skills, or other facts. Return JSON only with exactly these keys:
+Rules:
+1. Use only facts in the JSON. Never invent employers, degrees, years, achievements,
+   skills, projects, or plans.
+2. Never claim results or impact (like "improved performance" or "large datasets").
+3. Never call the person an expert, specialist, or guru.
+4. A short, honest text is better than a long one with made-up details.
+Return JSON only with exactly these keys:
 headlines, short_bio, long_bio.
 headlines must contain exactly 3 different plain-text headlines under 120 characters.
 short_bio must be 1-2 sentences under 200 characters.
-long_bio must be 3-5 sentences under 700 characters.
-If the profile is thin, write a short, honest summary rather than inventing facts.
+long_bio must be 2-4 sentences under 700 characters: fewer when the facts are few.
 """
 
-JOB_DRAFT_SYSTEM_PROMPT = """You help a recruiter write a job post.
-The JSON has the recruiter's rough notes and the job details they picked.
-Use only facts in the JSON. Never invent the company name, salary, benefits,
-years of experience, or anything else the notes don't say.
+# Words that oversell someone. Small models add them even when told not to,
+# so headlines using them are dropped unless the profile itself says so.
+BOASTFUL_WORDS = ("expert", "specialist", "guru", "ninja", "rockstar", "wizard", "master")
+
+JOB_DRAFT_SYSTEM_PROMPT = """You help a recruiter write a job post from their rough notes.
+Rules:
+1. Use only facts in the JSON. Never invent the company name, salary, benefits or duties.
+2. Copy requirements exactly. "3+ years" stays "3+ years": never "preferred" or "not required".
+3. Plain, simple sentences. No hype words like "cutting-edge" or "rockstar".
 Return JSON only with exactly these keys: title, description, skills.
 title: a clear job title under 80 characters.
-description: plain text under 1200 characters, in short paragraphs:
-what the person will do, what they need, and what is offered (only if the notes say).
-skills: a list of up to 8 short skill names that the notes mention.
+description: plain text under 1200 characters, in 2 or 3 short paragraphs
+separated by a blank line: what the person will do, what they need, and what is
+offered (only if the notes say).
+skills: the skill and tool names written in the notes, nothing else.
 """
 
 
@@ -79,6 +93,7 @@ def _ask_for_json(system_prompt, user_text, max_tokens):
             ],
             response_format={"type": "json_object"},
             max_tokens=max_tokens,
+            temperature=AI_TEMPERATURE,
         )
     except openai.APIStatusError as error:
         # For example when the model isn't loaded yet.
@@ -101,6 +116,12 @@ def _clean(value):
     return value.strip() if isinstance(value, str) else ""
 
 
+def _oversells(text, profile_text):
+    """True if `text` uses a boastful word that the person's own profile doesn't use."""
+    lowered = text.lower()
+    return any(word in lowered and word not in profile_text for word in BOASTFUL_WORDS)
+
+
 def write_headline_and_bios(profile_facts):
     """
     Returns {"headlines": [up to 3 texts], "bios": {"short": text, "long": text}}.
@@ -120,7 +141,12 @@ def write_headline_and_bios(profile_facts):
         raise AIUnavailable
 
     # The prompt asks for short texts, but a model can ignore that, so we check.
-    headlines = [headline for headline in headlines if 0 < len(headline) <= HEADLINE_MAX_LENGTH][:3]
+    profile_text = json.dumps(profile_facts, ensure_ascii=False).lower()
+    headlines = [
+        headline
+        for headline in headlines
+        if 0 < len(headline) <= HEADLINE_MAX_LENGTH and not _oversells(headline, profile_text)
+    ][:3]
 
     if not headlines or not short_bio or not long_bio:
         logger.warning("AI answer was missing a headline or a bio")
@@ -144,6 +170,9 @@ def write_job_draft(job_facts, title_max_length, description_max_length, max_ski
         title = " ".join(_clean(answer["title"]).split())
         description = _clean(answer["description"])
         raw_skills = answer.get("skills") or []
+        # Small models often answer "React, TypeScript" instead of a list.
+        if isinstance(raw_skills, str):
+            raw_skills = raw_skills.split(",")
         if not isinstance(raw_skills, list):
             raw_skills = []
     except (KeyError, TypeError, AttributeError):
@@ -158,11 +187,15 @@ def write_job_draft(job_facts, title_max_length, description_max_length, max_ski
         raise AIUnavailable
 
     # Keep only short, different skill names ("django" and "Django" count once).
+    # Small models like to add skills nobody asked for ("Agile", "API Testing"),
+    # so a skill must also be written in the recruiter's notes.
+    notes = str(job_facts.get("notes", "")).lower()
     skills = []
     seen = set()
     for skill in raw_skills:
         name = " ".join(_clean(skill).split())
-        if name and len(name) <= SKILL_MAX_LENGTH and name.lower() not in seen:
+        in_notes = name.lower() in notes
+        if name and in_notes and len(name) <= SKILL_MAX_LENGTH and name.lower() not in seen:
             seen.add(name.lower())
             skills.append(name)
 

@@ -211,6 +211,18 @@ class HeadlineBioViewTests(TestCase):
 
         self.assertEqual(self.client.post(URL).status_code, 503)
 
+    def test_boastful_headlines_are_dropped(self):
+        self.fake_ai.return_value = {**GOOD_ANSWER, "headlines": ["Python Expert", "Django Specialist", "Python developer"]}
+
+        self.assertEqual(self.client.post(URL).data["headlines"], ["Python developer"])
+
+    def test_boastful_word_is_kept_when_the_profile_says_it(self):
+        self.profile.headline = "Certified AWS specialist"
+        self.profile.save()
+        self.fake_ai.return_value = {**GOOD_ANSWER, "headlines": ["AWS Specialist", "Cloud engineer"]}
+
+        self.assertEqual(self.client.post(URL).data["headlines"], ["AWS Specialist", "Cloud engineer"])
+
     def test_extra_and_too_long_headlines_are_dropped(self):
         self.fake_ai.return_value = {**GOOD_ANSWER, "headlines": ["x" * 256, "a", "b", "c", "d"]}
 
@@ -257,6 +269,7 @@ class ProviderTests(SimpleTestCase):
         create = client_class.return_value.chat.completions.create
         self.assertEqual(create.call_args.kwargs["model"], "qwen2.5-3b-instruct")
         self.assertEqual(create.call_args.kwargs["max_tokens"], 100)
+        self.assertLessEqual(create.call_args.kwargs["temperature"], 0.3)  # sticks to the facts
 
 
 JOB_DRAFT_URL = "/api/ai/job-draft/"
@@ -383,9 +396,13 @@ class JobDraftViewTests(TestCase):
 class JobDraftAnswerTests(SimpleTestCase):
     """The AI's answer is checked before it reaches the form."""
 
-    def draft(self, answer):
+    NOTES = "We need React, Go, SQL and AWS."
+
+    def draft(self, answer, notes=NOTES):
         with patch("ai.provider._ask_for_json", return_value=answer):
-            return provider.write_job_draft({}, title_max_length=120, description_max_length=5000, max_skills=3)
+            return provider.write_job_draft(
+                {"notes": notes}, title_max_length=120, description_max_length=5000, max_skills=3
+            )
 
     def test_cleans_spaces_and_repeated_skills(self):
         draft = self.draft(
@@ -394,6 +411,16 @@ class JobDraftAnswerTests(SimpleTestCase):
 
         self.assertEqual(draft["title"], "React Developer")
         self.assertEqual(draft["skills"], ["React", "Go", "SQL"])  # max_skills=3
+
+    def test_skills_not_in_the_notes_are_dropped(self):
+        draft = self.draft({**GOOD_DRAFT, "skills": ["Agile Methodologies", "react", "API Testing"]}, notes="React dev")
+
+        self.assertEqual(draft["skills"], ["react"])
+
+    def test_skills_as_one_text_are_split(self):
+        draft = self.draft({**GOOD_DRAFT, "skills": "React, Go ,SQL"})
+
+        self.assertEqual(draft["skills"], ["React", "Go", "SQL"])
 
     def test_missing_skills_are_fine(self):
         self.assertEqual(self.draft({"title": "React Developer", "description": GOOD_DRAFT["description"]})["skills"], [])
