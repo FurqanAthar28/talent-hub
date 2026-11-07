@@ -9,6 +9,18 @@ jobs:
     defaults:
       run:
         working-directory: Backend
+    # settings.py needs these to start. They are fake values for tests only:
+    # the tests use an in-memory SQLite database, so the DB_* values are never
+    # used to connect, and no real secret is needed.
+    env:
+      DJANGO_DEBUG: "True"
+      DJANGO_SECRET_KEY: ci-only-not-a-real-secret-key-0123456789abcdef
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      DB_NAME: unused
+      DB_USER: unused
+      DB_PASSWORD: unused
+      DB_HOST: localhost
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
