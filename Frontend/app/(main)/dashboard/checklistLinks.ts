@@ -19,6 +19,8 @@ const SECTION_FOR_ITEM: Record<string, string> = {
   "Company name": "#company",
   "Hiring title": "#company",
   "Company website": "#company",
+  "About the company": "#company",
+  "Roles you hire for": "#hiring",
   "Admin title": "#admin",
 };
 
@@ -35,6 +37,8 @@ export function actionForChecklistItem(label: string): string {
     Projects: "Add a project",
     Experience: "Add work experience",
     "LinkedIn profile": "Add your LinkedIn",
+    "About the company": "Describe your company",
+    "Roles you hire for": "Add roles you hire for",
   };
   return special[label] ?? `Add ${label.toLowerCase()}`;
 }

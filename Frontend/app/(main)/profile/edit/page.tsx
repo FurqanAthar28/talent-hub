@@ -32,8 +32,9 @@ import ResumeSection from "./components/candidate/ResumeSection";
 import SkillsSection from "./components/candidate/skills/SkillsSection";
 import SocialLinksSection from "./components/candidate/SocialLinksSection";
 import DeleteAccountSection from "./components/DeleteAccountSection";
-import type { ProfileFormData } from "./components/formTypes";
+import type { ProfileFormData, SetListField } from "./components/formTypes";
 import CompanyInformationSection from "./components/recruiter/CompanyInformationSection";
+import HiringSection from "./components/recruiter/HiringSection";
 
 /** Profile from Django -> values for the form boxes. */
 function profileToForm(profile: Profile): ProfileFormData {
@@ -45,11 +46,20 @@ function profileToForm(profile: Profile): ProfileFormData {
     openToWork: profile.openToWork ?? false,
     linkedinUrl: profile.linkedinUrl || "",
     githubUrl: profile.githubUrl || "",
-   
     companyName: profile.companyName || "",
     companyWebsite: profile.companyWebsite || "",
     companyLocation: profile.companyLocation || "",
     hiringTitle: profile.hiringTitle || "",
+    companyAbout: profile.companyAbout || "",
+    companyIndustry: profile.companyIndustry || "",
+    companySize: profile.companySize || "",
+    companyLinkedinUrl: profile.companyLinkedinUrl || "",
+    workStyles: profile.workStyles ?? [],
+    hiringNow: profile.hiringNow ?? true,
+    hiringRoles: profile.hiringRoles ?? [],
+    hiringSkills: profile.hiringSkills ?? [],
+    hiringLocations: profile.hiringLocations ?? [],
+    hiringLevels: profile.hiringLevels ?? [],
     adminTitle: profile.adminTitle || "",
   };
 }
@@ -79,6 +89,17 @@ function formToRequestBody(form: ProfileFormData, role: Profile["role"], cvFile:
     body.append("companyWebsite", form.companyWebsite.trim());
     body.append("companyLocation", form.companyLocation.trim());
     body.append("hiringTitle", form.hiringTitle.trim());
+    body.append("companyAbout", form.companyAbout.trim());
+    body.append("companyIndustry", form.companyIndustry.trim());
+    body.append("companySize", form.companySize);
+    body.append("companyLinkedinUrl", form.companyLinkedinUrl.trim());
+    body.append("hiringNow", String(form.hiringNow));
+    // FormData can't hold a list, so lists go as JSON text: '["Backend Engineer"]'.
+    body.append("workStyles", JSON.stringify(form.workStyles));
+    body.append("hiringRoles", JSON.stringify(form.hiringRoles));
+    body.append("hiringSkills", JSON.stringify(form.hiringSkills));
+    body.append("hiringLocations", JSON.stringify(form.hiringLocations));
+    body.append("hiringLevels", JSON.stringify(form.hiringLevels));
   }
 
   if (role === "admin") {
@@ -148,8 +169,13 @@ export default function EditProfilePage() {
     }
   }
 
+  /** Chip lists (roles, skills, ...) change as a whole list, not from one box. */
+  const setListField: SetListField = (name, value) => {
+    setFormData((previous) => (previous ? { ...previous, [name]: value } : previous));
+  };
+
   // One handler for every box. A checkbox gives true/false, the others give text.
-  function handleChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+  function handleChange(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const box = event.target as HTMLInputElement;
     const value = box.type === "checkbox" ? box.checked : box.value;
 
@@ -214,7 +240,12 @@ export default function EditProfilePage() {
           { id: "experience", label: "Experience" },
         ]
       : []),
-    ...(profile.role === "recruiter" ? [{ id: "company", label: "Company" }] : []),
+    ...(profile.role === "recruiter"
+      ? [
+          { id: "company", label: "Company" },
+          { id: "hiring", label: "Hiring for" },
+        ]
+      : []),
     ...(profile.role === "admin" ? [{ id: "admin", label: "Admin role" }] : []),
   ];
 
@@ -276,7 +307,11 @@ export default function EditProfilePage() {
               showOpenToWork={isCandidate}
               ai={isCandidate ? aiWriter : undefined}
             />
-            <AboutSection {...sectionProps} ai={isCandidate ? aiWriter : undefined} />
+            <AboutSection
+              {...sectionProps}
+              ai={isCandidate ? aiWriter : undefined}
+              forRecruiter={profile.role === "recruiter"}
+            />
 
             {isCandidate && (
               <>
@@ -290,7 +325,12 @@ export default function EditProfilePage() {
               </>
             )}
 
-            {profile.role === "recruiter" && <CompanyInformationSection {...sectionProps} />}
+            {profile.role === "recruiter" && (
+              <>
+                <CompanyInformationSection {...sectionProps} setListField={setListField} />
+                <HiringSection {...sectionProps} setListField={setListField} />
+              </>
+            )}
 
             {profile.role === "admin" && (
               <section id="admin" className="form-section">

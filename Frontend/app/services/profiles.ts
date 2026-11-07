@@ -29,6 +29,18 @@ export type Profile = {
   companyWebsite: string;
   companyLocation: string;
   hiringTitle: string;
+  // Recruiters: about the company (all optional)
+  companyAbout: string;
+  companyIndustry: string;
+  companySize: string; // "" or one of COMPANY_SIZES (config/constants.ts)
+  companyLinkedinUrl: string;
+  workStyles: string[]; // WORK_STYLES values, e.g. ["hybrid", "remote"]
+  // Recruiters: "Hiring for"
+  hiringNow: boolean;
+  hiringRoles: string[];
+  hiringSkills: string[];
+  hiringLocations: string[];
+  hiringLevels: string[]; // HIRING_LEVELS values
   adminTitle: string;
   cvUrl: string; // "" if there is no CV, or I may not see it
   openToWork: boolean;

@@ -49,3 +49,41 @@ export const REJECTION_REASON_TEXT: Record<RejectionReason, { title: string; fix
     fix: "Add your company's real name and website (and your current job title), then send your profile again.",
   },
 };
+
+// ---------- Recruiter company + "Hiring for" ----------
+// Must match Profile.COMPANY_SIZE_CHOICES, WORK_STYLE_CHOICES and
+// HIRING_LEVEL_CHOICES in Backend/profiles/models.py
+
+export const COMPANY_SIZES = [
+  { value: "1-10", label: "1-10 people" },
+  { value: "11-50", label: "11-50 people" },
+  { value: "51-200", label: "51-200 people" },
+  { value: "201-1000", label: "201-1,000 people" },
+  { value: "1000+", label: "1,000+ people" },
+] as const;
+
+export const WORK_STYLES = [
+  { value: "onsite", label: "On-site" },
+  { value: "hybrid", label: "Hybrid" },
+  { value: "remote", label: "Remote" },
+] as const;
+
+export const HIRING_LEVELS = [
+  { value: "intern", label: "Internship" },
+  { value: "junior", label: "Junior" },
+  { value: "mid", label: "Mid-level" },
+  { value: "senior", label: "Senior" },
+  { value: "lead", label: "Lead / Manager" },
+] as const;
+
+// Must match the limits in Backend/profiles/serializers.py
+export const COMPANY_ABOUT_MAX_LENGTH = 1000;
+export const MAX_HIRING_ROLES = 10;
+export const MAX_HIRING_SKILLS = 20;
+export const MAX_HIRING_LOCATIONS = 10;
+export const LIST_ITEM_MAX_LENGTH = 60;
+
+/** "hybrid" -> "Hybrid", using one of the lists above. Unknown values are shown as they are. */
+export function choiceLabel(options: readonly { value: string; label: string }[], value: string) {
+  return options.find((option) => option.value === value)?.label ?? value;
+}

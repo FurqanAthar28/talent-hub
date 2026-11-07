@@ -7,6 +7,7 @@ They use force_authenticate (a test shortcut that skips the login cookies),
 because the login system has its own tests in accounts/tests.py.
 """
 
+import json
 import shutil
 import tempfile
 
@@ -197,6 +198,8 @@ class ProfileTests(TestCase):
         profile.company_name = "Acme"
         profile.hiring_title = "HR"
         profile.company_website = "https://acme.com"
+        profile.company_about = "We build payroll software."
+        profile.hiring_roles = ["Backend Engineer"]
         profile.save()
 
         data = self.client_for(recruiter).get("/api/profiles/me/").json()
@@ -257,3 +260,68 @@ class DuplicateSkillTests(TestCase):
         Skill.objects.create(profile=profile, name="React")
         with self.assertRaises(IntegrityError), transaction.atomic():
             Skill.objects.create(profile=profile, name="react")
+
+
+class RecruiterProfileTests(TestCase):
+    """Company details and "Hiring for" on a recruiter's profile."""
+
+    def setUp(self):
+        self.recruiter = User.objects.create_user("rec@example.com", "rec@example.com", "S3cure-pass!", first_name="Rec")
+        Profile.objects.create(
+            user=self.recruiter,
+            role=Profile.ROLE_RECRUITER,
+            approval_status=Profile.APPROVAL_APPROVED,
+            company_name="Acme",
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.recruiter)
+
+    def update(self, **fields):
+        # The real page sends FormData (multipart), with lists as JSON text.
+        return self.client.patch("/api/profiles/me/update/", fields, format="multipart")
+
+    def test_save_and_read_company_and_hiring(self):
+        response = self.update(
+            companyAbout="We build payroll software.",
+            companyIndustry="Fintech",
+            companySize="51-200",
+            companyLinkedinUrl="linkedin.com/company/acme",
+            workStyles='["hybrid", "remote"]',
+            hiringNow="false",
+            hiringRoles='["Backend Engineer", "  backend engineer ", "Data  Analyst", ""]',
+            hiringSkills='["Django", "React"]',
+            hiringLocations='["Lahore"]',
+            hiringLevels='["junior", "mid"]',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+
+        data = self.client.get("/api/profiles/me/").json()
+        self.assertEqual(data["companyIndustry"], "Fintech")
+        self.assertEqual(data["companySize"], "51-200")
+        self.assertEqual(data["companyLinkedinUrl"], "https://linkedin.com/company/acme")
+        self.assertEqual(data["workStyles"], ["hybrid", "remote"])
+        self.assertFalse(data["hiringNow"])
+        # Repeats (any case) and empty items are dropped; spaces are tidied.
+        self.assertEqual(data["hiringRoles"], ["Backend Engineer", "Data Analyst"])
+        self.assertEqual(data["hiringLevels"], ["junior", "mid"])
+
+    def test_other_people_see_it_on_the_profile(self):
+        self.update(hiringRoles='["Backend Engineer"]', companyAbout="Payroll software")
+        viewer = User.objects.create_user("ali@example.com", "ali@example.com", "S3cure-pass!", first_name="Ali")
+        Profile.objects.create(user=viewer, approval_status=Profile.APPROVAL_APPROVED)
+        client = APIClient()
+        client.force_authenticate(viewer)
+        data = client.get(f"/api/profiles/{self.recruiter.pk}/").json()
+        self.assertEqual(data["hiringRoles"], ["Backend Engineer"])
+        self.assertEqual(data["companyAbout"], "Payroll software")
+
+    def test_rejects_unknown_choices_and_too_many_items(self):
+        self.assertEqual(self.update(workStyles='["moon"]').status_code, 400)
+        self.assertEqual(self.update(hiringLevels='["wizard"]').status_code, 400)
+        self.assertEqual(self.update(companySize="huge").status_code, 400)
+        self.assertEqual(self.update(hiringRoles='"not a list"').status_code, 400)
+        too_many = json.dumps([f"Role {number}" for number in range(11)])
+        self.assertEqual(self.update(hiringRoles=too_many).status_code, 400)
+
+    def test_company_linkedin_must_be_a_company_page(self):
+        self.assertEqual(self.update(companyLinkedinUrl="linkedin.com/in/some-person").status_code, 400)
