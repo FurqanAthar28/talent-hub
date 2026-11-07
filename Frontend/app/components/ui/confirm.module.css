@@ -5,7 +5,7 @@
   margin: auto;
   padding: 0;
   border: 1px solid var(--border-color);
-  border-radius: 16px;
+  border-radius: var(--panel-radius, 16px);
   background: var(--card-color);
   color: var(--text-primary);
   /* It floats above the page, so here a shadow is right. */
@@ -22,7 +22,7 @@
 
 .title {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: var(--panel-title-weight, 700);
   line-height: 1.3;
 }
 

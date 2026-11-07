@@ -1,23 +1,24 @@
 /*
- * The admin Overview. The ink colors (--ink, --ink-raised, --ink-text) come
- * from .shell in shell.module.css.
+ * The admin Overview, in the shadcn/ui look: white cards, thin borders,
+ * small corners. The colors (--border-color, --accent, ...) come from .shell
+ * in shell.module.css.
  *
- * One loud thing (the dark "needs your attention" card); everything else is
- * quiet white cards.
+ * The "needs your attention" card is the first card, marked by a colored
+ * edge (amber when something is waiting, green when all is clear).
  */
 
 .overview {
   display: grid;
-  gap: 20px;
+  gap: 16px;
 }
 
 .card {
   min-width: 0;
-  padding: 22px 24px;
-  border: 1px solid #e7e5f0;
-  border-radius: 16px;
+  padding: 20px 24px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
   background: var(--card-color);
-  box-shadow: 0 1px 2px rgba(29, 24, 56, 0.04);
+  box-shadow: var(--shadow-sm);
 }
 
 .cardHead {
@@ -25,13 +26,13 @@
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .cardHead h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
@@ -46,7 +47,7 @@
   gap: 8px;
   margin: 14px 0 0;
   color: var(--text-secondary);
-  font-size: 13.5px;
+  font-size: 13px;
 }
 
 .textButton,
@@ -58,10 +59,10 @@
   padding: 0;
   border: 0;
   background: none;
-  color: var(--primary-color);
+  color: var(--text-primary);
   font: inherit;
-  font-size: 13.5px;
-  font-weight: 650;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
 }
 
@@ -71,51 +72,74 @@
   text-underline-offset: 3px;
 }
 
+.textButton:focus-visible,
+.kpiLink:focus-visible {
+  outline: none;
+  border-radius: 4px;
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
 /* ---------- 1. Needs your attention ---------- */
 
 .attention {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 24px;
-  padding: 28px;
-  border-radius: 20px;
-  background:
-    radial-gradient(120% 140% at 100% 0%, rgba(124, 58, 237, 0.45), transparent 55%),
-    var(--ink);
-  color: var(--ink-text);
+  padding: 22px 24px 22px 28px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--card-color);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+}
+
+/* The colored edge on the left. */
+.attention::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: #f59e0b;
+}
+
+/* Nothing waiting (no faces, no buttons): a calm green edge. */
+.attention:not(:has(.faces))::before {
+  background: #22c55e;
 }
 
 .attentionTitle {
   margin: 0;
-  max-width: 24ch;
-  color: #fff;
-  font-size: 26px;
-  line-height: 1.2;
-  font-weight: 750;
-  letter-spacing: -0.02em;
+  max-width: 40ch;
+  color: var(--text-primary);
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 
 .attentionText {
-  margin: 8px 0 0;
-  max-width: 54ch;
-  font-size: 15px;
+  margin: 4px 0 0;
+  max-width: 60ch;
+  font-size: 14px;
 }
 
 .faces {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 18px;
+  margin-top: 16px;
 }
 
 .faceStack {
   display: flex;
 }
 
-/* Overlapping avatars, each with a ring in the card's color. */
+/* Overlapping avatars, each with a white ring. */
 .faceStack > * {
-  margin-left: -6px;
-  box-shadow: 0 0 0 3px var(--ink);
+  margin-left: -8px;
+  box-shadow: 0 0 0 2px var(--card-color);
   border-radius: 999px;
 }
 
@@ -124,16 +148,16 @@
 }
 
 .faceNames {
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 500;
 }
 
 .attentionActions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 22px;
+  gap: 8px;
+  margin-top: 18px;
 }
 
 .inkPrimary,
@@ -142,47 +166,49 @@
   align-items: center;
   gap: 8px;
   width: auto;
-  height: 42px;
-  padding: 0 18px;
-  border-radius: 999px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
   font: inherit;
-  font-size: 14.5px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
+  transition: background-color 120ms ease;
 }
 
 .inkPrimary {
-  border: 0;
-  background: #fff;
-  color: var(--ink);
+  border: 1px solid var(--primary-color);
+  background: var(--primary-color);
+  color: #fafafa;
 }
 
 .inkPrimary:hover {
-  background: #ede9fe;
+  background: #3f3f46;
 }
 
 .inkGhost {
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  background: transparent;
-  color: #fff;
+  border: 1px solid var(--border-color);
+  background: var(--card-color);
+  color: var(--text-primary);
 }
 
 .inkGhost:hover {
-  background: var(--ink-raised);
+  background: var(--bg-light);
 }
 
 .inkPrimary:focus-visible,
 .inkGhost:focus-visible,
 .attentionSide button:focus-visible {
-  outline: 2px solid #c4b5fd;
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
 }
 
 .attentionSide {
   display: grid;
   align-content: start;
   gap: 8px;
-  min-width: 260px;
+  min-width: 280px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -193,19 +219,20 @@
   align-items: center;
   gap: 12px;
   width: 100%;
-  padding: 14px 16px;
-  border: 1px solid var(--ink-line);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--ink-text);
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-color);
+  color: var(--text-secondary);
   font: inherit;
-  font-size: 14px;
+  font-size: 13.5px;
   text-align: left;
   cursor: pointer;
+  transition: background-color 120ms ease;
 }
 
 .attentionSide button:hover {
-  background: var(--ink-raised);
+  background: var(--bg-light);
 }
 
 .attentionSide span {
@@ -213,7 +240,8 @@
 }
 
 .attentionSide strong {
-  color: #fff;
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 /* ---------- 2. Key numbers ---------- */
@@ -228,45 +256,53 @@
   position: relative;
   display: grid;
   align-content: start;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   padding: 18px 20px;
-  border: 1px solid #e7e5f0;
-  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
   background: var(--card-color);
-  box-shadow: 0 1px 2px rgba(29, 24, 56, 0.04);
+  box-shadow: var(--shadow-sm);
 }
 
-.kpiWarn {
-  border-color: #fcd9a1;
-  background: linear-gradient(180deg, #fffaf0, var(--card-color) 70%);
+/* Something waiting: a small amber dot next to the label (not a loud card). */
+.kpiWarn .kpiLabel::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 8px;
+  border-radius: 999px;
+  background: #f59e0b;
+  vertical-align: middle;
 }
 
 .kpiLabel {
   color: var(--text-secondary);
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .kpiValue {
+  margin-top: 2px;
   color: var(--text-primary);
-  font-size: 34px;
-  line-height: 1.05;
-  font-weight: 750;
-  letter-spacing: -0.03em;
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 650;
+  letter-spacing: -0.025em;
   font-variant-numeric: tabular-nums;
 }
 
 .kpiHint {
   color: var(--text-secondary);
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 .sparkline {
   display: block;
   width: 100%;
   height: 36px;
-  margin-top: 4px;
+  margin-top: 6px;
 }
 
 .trendUp,
@@ -275,16 +311,16 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12.5px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .trendUp {
-  color: var(--success);
+  color: #16a34a;
 }
 
 .trendDown {
-  color: var(--danger);
+  color: #dc2626;
 }
 
 .trendFlat {
@@ -311,12 +347,12 @@
 }
 
 .gridLine {
-  stroke: #ece9f4;
+  stroke: #f4f4f5;
   stroke-width: 1;
 }
 
 .baseLine {
-  stroke: #d6d2e3;
+  stroke: var(--border-color);
   stroke-width: 1;
 }
 
@@ -331,9 +367,9 @@
 }
 
 .barGroup:focus-visible rect {
-  stroke: var(--primary-color);
+  stroke: var(--accent);
   stroke-width: 2;
-  rx: 6;
+  rx: 4;
 }
 
 .tooltip {
@@ -342,18 +378,19 @@
   transform: translate(-50%, -100%);
   display: grid;
   gap: 1px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: var(--ink);
-  color: #fff;
-  font-size: 12.5px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-color);
+  color: var(--text-primary);
+  font-size: 12px;
   white-space: nowrap;
   pointer-events: none;
-  box-shadow: 0 8px 20px rgba(29, 24, 56, 0.2);
+  box-shadow: var(--shadow-pop);
 }
 
 .tooltip span {
-  color: var(--ink-text);
+  color: var(--text-secondary);
 }
 
 .split {
@@ -364,7 +401,7 @@
 .splitBar {
   display: flex;
   gap: 2px; /* a gap between the two parts, so they never blur together */
-  height: 14px;
+  height: 10px;
   border-radius: 999px;
   overflow: hidden;
 }
@@ -375,12 +412,12 @@
 
 .splitEmpty {
   flex: 1;
-  background: #ece9f4;
+  background: var(--bg-light);
 }
 
 .legend {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -391,13 +428,13 @@
   grid-template-columns: auto 1fr auto auto;
   align-items: center;
   gap: 10px;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 
 .swatch {
-  width: 12px;
-  height: 12px;
-  border-radius: 4px;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
 }
 
 .legendLabel {
@@ -405,6 +442,7 @@
 }
 
 .legend strong {
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -437,19 +475,19 @@
 .timeline li:not(:last-child)::after {
   content: "";
   position: absolute;
-  left: 4px;
+  left: 3px;
   top: 26px;
   bottom: -6px;
-  width: 2px;
-  background: #ece9f4;
+  width: 1px;
+  background: var(--border-color);
 }
 
 .timelineDot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
-  background: var(--primary-color);
-  box-shadow: 0 0 0 3px var(--primary-light);
+  background: var(--text-primary);
+  box-shadow: 0 0 0 3px var(--bg-light);
 }
 
 .timelineText {
@@ -471,23 +509,31 @@
 }
 
 .allNumbers {
-  border: 1px solid #e7e5f0;
-  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
   background: var(--card-color);
+  box-shadow: var(--shadow-sm);
 }
 
 .allNumbers summary {
-  padding: 16px 24px;
-  font-weight: 700;
+  padding: 14px 24px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
 }
 
+.allNumbers summary:hover {
+  background: var(--bg-light);
+  border-radius: var(--radius-lg);
+}
+
 .allNumbers[open] summary {
-  border-bottom: 1px solid #e7e5f0;
+  border-bottom: 1px solid var(--border-color);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .allNumbers > div {
-  padding: 16px;
+  padding: 16px 24px;
 }
 
 /* ---------- Smaller screens ---------- */
@@ -512,11 +558,11 @@
   }
 
   .attention {
-    padding: 22px;
+    padding: 18px 18px 18px 22px;
   }
 
   .attentionTitle {
-    font-size: 21px;
+    font-size: 17px;
   }
 
   .card {
@@ -528,6 +574,6 @@
   }
 
   .kpiValue {
-    font-size: 28px;
+    font-size: 24px;
   }
 }
