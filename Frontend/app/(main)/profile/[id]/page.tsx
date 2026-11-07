@@ -15,9 +15,10 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { UserX } from "lucide-react";
+import { Flag, UserX } from "lucide-react";
 
 import { errorText } from "../../../api/client";
+import ReportDialog from "../../../components/ReportDialog";
 import { EmptyState, Notice, Panel, ui } from "../../../components/ui";
 import { MESSAGES } from "../../../config/messages";
 import { ROUTES } from "../../../config/routes";
@@ -47,6 +48,7 @@ export default function UserProfilePage() {
   const [loadError, setLoadError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false); // a button is working
+  const [reporting, setReporting] = useState(false); // the Report box is open
 
   const isMyOwnProfile = String(me.id) === userId;
 
@@ -207,10 +209,23 @@ export default function UserProfilePage() {
                 <Link href={ROUTES.CONNECTIONS} className="btn-outline">
                   Back to network
                 </Link>
+                {/* Same people who can connect can report (never admins, never an admin). */}
+                <button type="button" className="btn-outline" onClick={() => setReporting(true)}>
+                  <Flag size={15} aria-hidden="true" />
+                  {text("reportProfile", "Report")}
+                </button>
               </>
             ) : undefined
           }
         />
+
+        {reporting && (
+          <ReportDialog
+            target={{ kind: "profile", reportedUserId: Number(userId) }}
+            name={profile.fullName || "this person"}
+            onClose={() => setReporting(false)}
+          />
+        )}
     </main>
   );
 }

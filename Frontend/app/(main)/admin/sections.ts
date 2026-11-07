@@ -6,9 +6,9 @@
  *   onPhone -> true: its own button in the bottom bar; false: under "More"
  */
 
-import { Activity, LayoutDashboard, Link2, type LucideIcon, Type, UserCheck, Users } from "lucide-react";
+import { Activity, Flag, LayoutDashboard, Link2, type LucideIcon, Type, UserCheck, Users } from "lucide-react";
 
-export const SECTION_IDS = ["overview", "approvals", "users", "connections", "activity", "texts"] as const;
+export const SECTION_IDS = ["overview", "approvals", "reports", "users", "connections", "activity", "texts"] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
 
 export type Section = {
@@ -39,6 +39,14 @@ export const SECTIONS: Section[] = [
     onPhone: true,
   },
   {
+    id: "reports",
+    label: "Reports",
+    intro: "Profiles and messages people reported. Dismiss, suspend or ban.",
+    icon: Flag,
+    group: "Manage",
+    onPhone: true,
+  },
+  {
     id: "users",
     label: "Users",
     intro: "Every account. Change roles, suspend, ban, delete or restore.",
@@ -52,7 +60,7 @@ export const SECTIONS: Section[] = [
     intro: "Connect two people by hand, or remove a connection.",
     icon: Link2,
     group: "Manage",
-    onPhone: true,
+    onPhone: false, // under "More" on phones, so the bottom bar keeps 4 buttons + More
   },
   {
     id: "activity",

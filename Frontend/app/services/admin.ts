@@ -8,10 +8,12 @@ import type {
   AdminAuditLog,
   AdminConnection,
   AdminMe,
+  AdminReport,
   AdminStats,
   AdminUiContentItem,
   AdminUser,
   ApprovalReview,
+  ReportAction,
 } from "../(main)/admin/types";
 import type { RejectionReason } from "../config/constants";
 import { apiFetch, getApiMessage, readJson } from "../api/client";
@@ -85,6 +87,20 @@ export const disconnectUsers = (userId: number, connectedUserId: number) =>
 
 export const updateUiContentItem = (key: string, value: string) =>
   request<AdminUiContentItem>(API_ROUTES.ADMIN.UI_CONTENT_ITEM(key), jsonBody("PATCH", { value }));
+
+// ---------- Reports ----------
+
+export const getReports = (status: "open" | "closed") => requestList<AdminReport>(API_ROUTES.ADMIN.REPORTS(status));
+
+/**
+ * Close a report. Suspend and ban need a note (the person sees it, like on the
+ * Users page) and also close every other open report about that person.
+ */
+export const resolveReport = (reportId: number, action: ReportAction, note = "") =>
+  request<AdminReport & { closedOthers?: number }>(
+    API_ROUTES.ADMIN.REPORT_RESOLVE(reportId),
+    jsonBody("POST", { action, note })
+  );
 
 // ---------- Shared rules (the admin page and the admin profile both use these) ----------
 

@@ -1,0 +1,170 @@
+/* The "Report" box (ReportDialog.tsx). Same frame as the confirm box. */
+
+.dialog {
+  width: min(480px, calc(100% - 32px));
+  max-height: calc(100vh - 48px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--panel-radius, 16px);
+  background: var(--card-color);
+  color: var(--text-primary);
+  box-shadow: 0 24px 48px rgba(17, 12, 34, 0.18);
+}
+
+.dialog::backdrop {
+  background: rgba(17, 12, 34, 0.45);
+}
+
+.box {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.text {
+  margin-top: -8px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.small {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.quote {
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-light);
+  color: var(--text-primary);
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.reasons {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.reasons legend {
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.reason {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.reason:hover {
+  background: var(--bg-light);
+}
+
+.reason:has(input:checked) {
+  border-color: var(--primary-color);
+  background: var(--primary-light);
+}
+
+.reason input {
+  accent-color: var(--primary-color);
+}
+
+.details {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.details textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font: inherit;
+  font-weight: 400;
+  resize: vertical;
+}
+
+.details textarea:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.counter {
+  justify-self: end;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.error {
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.done {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  text-align: center;
+  color: var(--success);
+}
+
+.done .title,
+.done .text {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.done .text {
+  color: var(--text-secondary);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.actions > * {
+  width: auto; /* globals.css stretches buttons on phones */
+}
+
+/* Small phones: a sheet at the bottom of the screen. */
+@media (max-width: 480px) {
+  .dialog {
+    width: 100%;
+    max-width: none;
+    margin: auto 0 0;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .actions > * {
+    flex: 1;
+  }
+}

@@ -86,6 +86,7 @@ INSTALLED_APPS = [
     "admin_panel",
     "recruiter",
     "ai",
+    "reports",
 ]
 
 # Middleware = checkpoints every request passes through, top to bottom.
@@ -269,6 +270,8 @@ REST_FRAMEWORK = {
         # Generous for real people, but stops scripts flooding everyone.
         "connection_request": config("CONNECTION_REQUEST_THROTTLE_RATE", default="40/hour"),
         "message": config("MESSAGE_THROTTLE_RATE", default="30/min"),
+        # Reports about a profile or message (reports/throttles.py).
+        "report": config("REPORT_THROTTLE_RATE", default="10/hour"),
     },
 }
 

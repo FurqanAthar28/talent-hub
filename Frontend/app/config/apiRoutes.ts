@@ -77,6 +77,10 @@ export const API_ROUTES = {
       `/connections/conversations/${conversationId}/messages/`,
   },
 
+  REPORTS: {
+    CREATE: "/reports/", // POST { kind, reportedUserId, messageId?, reason, details }
+  },
+
   RECRUITER: {
     SUMMARY: "/recruiter/summary/",
     CANDIDATES: "/recruiter/candidates/",
@@ -99,6 +103,10 @@ export const API_ROUTES = {
     CONNECTIONS: "/admin/connections/",
     CONNECT_USERS: "/admin/connect-users/",
     DISCONNECT_USERS: "/admin/disconnect-users/",
+    // Reports from users: ?status=open (default) or ?status=closed
+    REPORTS: (status: "open" | "closed") => `/admin/reports/?status=${status}`,
+    // Close one: POST { action: "dismiss" | "suspend" | "ban", note }
+    REPORT_RESOLVE: (reportId: Id) => `/admin/reports/${reportId}/resolve/`,
     AUDIT_LOGS: "/admin/audit-logs/",
     UI_CONTENT: "/admin/ui-content/",
     UI_CONTENT_ITEM: (key: string) =>

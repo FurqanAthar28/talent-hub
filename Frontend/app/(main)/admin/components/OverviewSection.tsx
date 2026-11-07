@@ -2,13 +2,13 @@
 
 /**
  * The admin's first screen, in the order an admin needs it:
- *   1. "Needs your attention"  -> people waiting, problem accounts, deletions ending soon
+ *   1. "Needs your attention"  -> people waiting, open reports, problem accounts, deletions ending soon
  *   2. Four key numbers         -> each with a this-week-vs-last-week trend
  *   3. Sign-ups per day         -> and who joined (candidates vs recruiters)
  *   4. Recent admin actions     -> and every platform number, folded away
  */
 
-import { ArrowRight, CircleAlert, Clock, ShieldOff, TrendingDown, TrendingUp, UserCheck } from "lucide-react";
+import { ArrowRight, CircleAlert, Clock, Flag, ShieldOff, TrendingDown, TrendingUp, UserCheck } from "lucide-react";
 
 import { Avatar, cx } from "@/app/components/ui";
 import { displayName } from "@/app/services/admin";
@@ -26,6 +26,7 @@ type Props = {
   insights: Insights;
   stats: AdminStats | null;
   recentLogs: AdminAuditLog[];
+  openReports: number; // reports no admin has handled yet
   text: TextFn;
   onReview: (user: AdminUser) => void;
   onOpen: (section: SectionId) => void;
@@ -70,6 +71,7 @@ export default function OverviewSection({
   insights,
   stats,
   recentLogs,
+  openReports,
   text,
   onReview,
   onOpen,
@@ -77,7 +79,7 @@ export default function OverviewSection({
   formatDate,
 }: Props) {
   const { waiting, problemAccounts, endingSoon } = insights;
-  const allClear = waiting.length === 0 && problemAccounts === 0 && endingSoon.length === 0;
+  const allClear = waiting.length === 0 && openReports === 0 && problemAccounts === 0 && endingSoon.length === 0;
   const next = waiting[0];
 
   return (
@@ -124,15 +126,26 @@ export default function OverviewSection({
               </h2>
               <p className={styles.attentionText}>
                 {allClear
-                  ? "No approvals, no problem accounts, no deletions ending soon. New sign-ups will show up here."
-                  : "New candidates and recruiters will show up here. A few accounts still need a look:"}
+                  ? "No approvals, no open reports, no problem accounts, no deletions ending soon. New sign-ups will show up here."
+                  : "New candidates and recruiters will show up here. A few things still need a look:"}
               </p>
             </>
           )}
         </div>
 
-        {(problemAccounts > 0 || endingSoon.length > 0) && (
+        {(openReports > 0 || problemAccounts > 0 || endingSoon.length > 0) && (
           <ul className={styles.attentionSide}>
+            {openReports > 0 && (
+              <li>
+                <button type="button" onClick={() => onOpen("reports")}>
+                  <Flag size={18} aria-hidden="true" />
+                  <span>
+                    <strong>{plural(openReports, "open report", "open reports")}</strong> from users
+                  </span>
+                  <ArrowRight size={16} aria-hidden="true" />
+                </button>
+              </li>
+            )}
             {problemAccounts > 0 && (
               <li>
                 <button type="button" onClick={() => onOpenUsers("suspended")}>
