@@ -35,6 +35,8 @@ def get_completion_checklist(profile, counts=None):
             ("Company name", bool(profile.company_name)),
             ("Hiring title", bool(profile.hiring_title)),
             ("Company website", bool(profile.company_website)),
+            ("About the company", bool(profile.company_about.strip())),
+            ("Roles you hire for", bool(profile.hiring_roles)),
         ]
 
     # Candidates

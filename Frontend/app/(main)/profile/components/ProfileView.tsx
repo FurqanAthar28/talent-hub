@@ -17,15 +17,18 @@ import {
   ExternalLink,
   FileText,
   FolderGit2,
+  Globe,
   Link2,
   Mail,
   MapPin,
+  Users,
 } from "lucide-react";
 
 import Link from "next/link";
 
 import { backendUrl } from "@/app/api/client";
 import { Avatar, Badge, Panel, ui } from "@/app/components/ui";
+import { COMPANY_SIZES, HIRING_LEVELS, WORK_STYLES, choiceLabel } from "@/app/config/constants";
 import { ROUTES } from "@/app/config/routes";
 import { useUiContent } from "@/app/hooks/useUiContent";
 import type { ProfileDetails } from "@/app/services/profiles";
@@ -54,6 +57,23 @@ function ContactRow({ icon: Icon, href, label }: { icon: typeof Mail; href: stri
         <span className={styles.contactText}>{label}</span>
       </a>
     </li>
+  );
+}
+
+/** A small labelled group of chips ("Roles", "Skills" ...). Not shown when empty. */
+function ChipGroup({ label, items }: { label: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className={styles.chipGroup}>
+      <span className={styles.factLabel}>{label}</span>
+      <div className={styles.tags}>
+        {items.map((item) => (
+          <span key={item} className={styles.tag}>
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -86,17 +106,21 @@ export default function ProfileView({
         { value: profile.projectsCount, label: profile.projectsCount === 1 ? "project" : "projects" },
         { value: profile.skillsCount, label: profile.skillsCount === 1 ? "skill" : "skills" },
       ]
-    : isRecruiter
-      ? [
-          { value: profile.companyName || "-", label: "company" },
-          { value: profile.hiringTitle || "-", label: "job title" },
-          { value: profile.connectionsCount, label: "connections" },
-        ]
-      : [];
+    : [];
 
-  const hasContact = Boolean(
-    profile.email || profile.linkedinUrl || profile.githubUrl || profile.companyWebsite
-  );
+  // Recruiters: "Talent Partner at Arbisoft" under the headline.
+  const recruiterLine = isRecruiter
+    ? [profile.hiringTitle, profile.companyName].filter(Boolean).join(" at ")
+    : "";
+  const hiringRoles = profile.hiringRoles ?? [];
+  const hasHiringInfo =
+    hiringRoles.length > 0 ||
+    (profile.hiringSkills ?? []).length > 0 ||
+    (profile.hiringLocations ?? []).length > 0 ||
+    (profile.hiringLevels ?? []).length > 0;
+
+  // Recruiters' company links live in the company card, so their Contact is just the email.
+  const hasContact = Boolean(profile.email || (isCandidate && (profile.linkedinUrl || profile.githubUrl)));
 
   return (
     <div className={ui.stack}>
@@ -110,6 +134,12 @@ export default function ProfileView({
             <p className={styles.headline}>
               {profile.headline || text("professionalFallback", "Professional")}
             </p>
+            {recruiterLine && (
+              <p className={styles.companyLine}>
+                <Building2 size={15} aria-hidden="true" />
+                {recruiterLine}
+              </p>
+            )}
             <div className={styles.meta}>
               {profile.location && (
                 <span className={styles.metaItem}>
@@ -119,6 +149,7 @@ export default function ProfileView({
               )}
               <Badge tone="neutral">{roleLabel}</Badge>
               {isCandidate && profile.openToWork && <Badge tone="success">Open to work</Badge>}
+              {isRecruiter && profile.hiringNow && <Badge tone="success">Hiring now</Badge>}
             </div>
           </div>
 
@@ -140,7 +171,7 @@ export default function ProfileView({
       <div className={ui.columns}>
         {/* ---------- Main column ---------- */}
         <div className={ui.stack}>
-          <Panel title="About">
+          <Panel title={isRecruiter ? `About ${profile.fullName.split(" ")[0] || "me"}` : "About"}>
             {profile.bio ? (
               <p className={styles.bio}>{profile.bio}</p>
             ) : (
@@ -241,25 +272,98 @@ export default function ProfileView({
           )}
 
           {isRecruiter && (
-            <Panel title={text("companyInformation", "Company")}>
-              <div className={styles.facts}>
-                {[
-                  ["Company", profile.companyName],
-                  ["Job title", profile.hiringTitle],
-                  ["Company location", profile.companyLocation],
-                ].map(([label, value]) => (
-                  <div key={label} className={styles.fact}>
-                    <span className={styles.factLabel}>{label}</span>
-                    <span>{value || "Not added yet"}</span>
-                  </div>
-                ))}
-              </div>
+            <Panel title="Hiring for" hint={profile.hiringNow ? "Open to hearing from candidates" : "Not hiring right now"}>
+              {hasHiringInfo ? (
+                <div className={styles.hiring}>
+                  <ChipGroup label="Roles" items={hiringRoles} />
+                  <ChipGroup
+                    label="Experience levels"
+                    items={(profile.hiringLevels ?? []).map((value) => choiceLabel(HIRING_LEVELS, value))}
+                  />
+                  <ChipGroup label="Skills they look for" items={profile.hiringSkills ?? []} />
+                  <ChipGroup label="Locations" items={profile.hiringLocations ?? []} />
+                </div>
+              ) : (
+                <p className={styles.muted}>
+                  {isMine ? (
+                    <>
+                      Add the roles you hire for, so the right candidates reach out.{" "}
+                      <Link href={`${ROUTES.PROFILE_EDIT}#hiring`}>Add roles</Link>
+                    </>
+                  ) : (
+                    "No roles listed yet."
+                  )}
+                </p>
+              )}
+            </Panel>
+          )}
+
+          {isRecruiter && (
+            <Panel title={`About ${profile.companyName || "the company"}`}>
+              {profile.companyAbout ? (
+                <p className={styles.bio}>{profile.companyAbout}</p>
+              ) : (
+                <p className={styles.muted}>
+                  {isMine ? (
+                    <>
+                      Tell candidates what your company builds.{" "}
+                      <Link href={`${ROUTES.PROFILE_EDIT}#company`}>Add it</Link>
+                    </>
+                  ) : (
+                    "No company description yet."
+                  )}
+                </p>
+              )}
             </Panel>
           )}
         </div>
 
         {/* ---------- Side column ---------- */}
         <div className={ui.stack}>
+          {isRecruiter && (
+            <section className={`${ui.panel} ${styles.companyCard}`} aria-label="Company">
+              <div className={styles.companyHead}>
+                <Avatar name={profile.companyName || "?"} size={48} />
+                <div className={styles.companyName}>
+                  <strong>{profile.companyName || "Company not added"}</strong>
+                  {profile.companyIndustry && <span>{profile.companyIndustry}</span>}
+                </div>
+              </div>
+
+              <ul className={styles.companyFacts}>
+                {profile.companySize && (
+                  <li>
+                    <Users size={16} aria-hidden="true" />
+                    {choiceLabel(COMPANY_SIZES, profile.companySize)}
+                  </li>
+                )}
+                {profile.companyLocation && (
+                  <li>
+                    <MapPin size={16} aria-hidden="true" />
+                    {profile.companyLocation}
+                  </li>
+                )}
+                {(profile.workStyles ?? []).length > 0 && (
+                  <li>
+                    <Briefcase size={16} aria-hidden="true" />
+                    {(profile.workStyles ?? []).map((value) => choiceLabel(WORK_STYLES, value)).join(" · ")}
+                  </li>
+                )}
+              </ul>
+
+              {(profile.companyWebsite || profile.companyLinkedinUrl) && (
+                <ul className={styles.contactList}>
+                  <ContactRow icon={Globe} href={profile.companyWebsite} label={shortUrl(profile.companyWebsite)} />
+                  <ContactRow
+                    icon={Link2}
+                    href={profile.companyLinkedinUrl}
+                    label={profile.companyLinkedinUrl ? "Company LinkedIn" : ""}
+                  />
+                </ul>
+              )}
+            </section>
+          )}
+
           {isCandidate && (
             <Panel title={text("skills", "Skills")}>
               {skills.length === 0 ? (
@@ -301,9 +405,6 @@ export default function ProfileView({
                     <ContactRow icon={Link2} href={profile.linkedinUrl} label={shortUrl(profile.linkedinUrl)} />
                     <ContactRow icon={Code2} href={profile.githubUrl} label={shortUrl(profile.githubUrl)} />
                   </>
-                )}
-                {isRecruiter && (
-                  <ContactRow icon={Building2} href={profile.companyWebsite} label={shortUrl(profile.companyWebsite)} />
                 )}
               </ul>
             </Panel>

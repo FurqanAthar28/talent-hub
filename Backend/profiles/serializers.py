@@ -6,6 +6,8 @@ ProfileUpdateSerializer  -> checks + saves the "Edit profile" form
 SkillSerializer, ProjectSerializer, ExperienceSerializer, ActivitySerializer
 """
 
+import json
+
 from django.db import transaction
 from rest_framework import serializers
 
@@ -21,6 +23,66 @@ NAME_MAX_LENGTH = 150  # Django's first_name / last_name limit
 TEXT_MAX_LENGTH = 255
 URL_MAX_LENGTH = 200  # Django's URLField limit
 MAX_TECH_STACK_ITEMS = 20
+COMPANY_ABOUT_MAX_LENGTH = 1000
+INDUSTRY_MAX_LENGTH = 100
+# "Hiring for" limits: enough for a real recruiter, too few to spam.
+MAX_HIRING_ROLES = 10
+MAX_HIRING_SKILLS = 20
+MAX_HIRING_LOCATIONS = 10
+LIST_ITEM_MAX_LENGTH = 60
+
+
+class RecruiterListField(serializers.Field):
+    """
+    A short list of words, like ["Backend Engineer", "Data Analyst"].
+
+    The Edit Profile form is sent as FormData (it can carry a CV), and
+    FormData can't hold a list, so the page sends it as JSON text:
+    '["Backend Engineer"]'. A real list is accepted too.
+
+    Cleans it up: trims spaces, drops empty and repeated items (ignoring
+    upper/lower case), and stops at `max_items`.
+    `choices` (optional) = the only allowed values, e.g. work styles.
+    """
+
+    def __init__(self, max_items, choices=None, **kwargs):
+        self.max_items = max_items
+        self.choices = list(choices) if choices else None
+        super().__init__(**kwargs)
+
+    def to_representation(self, value):
+        return list(value or [])
+
+    def to_internal_value(self, data):
+        if isinstance(data, str):
+            try:
+                data = json.loads(data) if data.strip() else []
+            except ValueError:
+                raise serializers.ValidationError("Send a list.")
+        if not isinstance(data, list):
+            raise serializers.ValidationError("Send a list.")
+
+        cleaned, seen = [], set()
+        for item in data:
+            if not isinstance(item, str):
+                raise serializers.ValidationError("Each item must be text.")
+            item = " ".join(item.split())  # trim, and squash double spaces
+            if not item or item.lower() in seen:
+                continue
+            if len(item) > LIST_ITEM_MAX_LENGTH:
+                raise serializers.ValidationError(f'"{item[:20]}..." is too long (max {LIST_ITEM_MAX_LENGTH} characters).')
+            if self.choices is not None and item not in self.choices:
+                raise serializers.ValidationError(f'"{item}" is not one of the options.')
+            seen.add(item.lower())
+            cleaned.append(item)
+
+        if len(cleaned) > self.max_items:
+            raise serializers.ValidationError(f"Add at most {self.max_items}.")
+        return cleaned
+
+
+def choice_values(choices):
+    return [value for value, _label in choices]
 
 
 def split_full_name(full_name):
@@ -57,6 +119,16 @@ class ProfileSerializer(serializers.ModelSerializer):
     companyWebsite = serializers.CharField(source="company_website", read_only=True)
     companyLocation = serializers.CharField(source="company_location", read_only=True)
     hiringTitle = serializers.CharField(source="hiring_title", read_only=True)
+    companyAbout = serializers.CharField(source="company_about", read_only=True)
+    companyIndustry = serializers.CharField(source="company_industry", read_only=True)
+    companySize = serializers.CharField(source="company_size", read_only=True)
+    companyLinkedinUrl = serializers.CharField(source="company_linkedin_url", read_only=True)
+    workStyles = serializers.ListField(source="work_styles", read_only=True)
+    hiringNow = serializers.BooleanField(source="hiring_now", read_only=True)
+    hiringRoles = serializers.ListField(source="hiring_roles", read_only=True)
+    hiringSkills = serializers.ListField(source="hiring_skills", read_only=True)
+    hiringLocations = serializers.ListField(source="hiring_locations", read_only=True)
+    hiringLevels = serializers.ListField(source="hiring_levels", read_only=True)
     adminTitle = serializers.CharField(source="admin_title", read_only=True)
     openToWork = serializers.BooleanField(source="open_to_work", read_only=True)
     approvalStatus = serializers.CharField(source="approval_status", read_only=True)
@@ -89,6 +161,16 @@ class ProfileSerializer(serializers.ModelSerializer):
             "companyWebsite",
             "companyLocation",
             "hiringTitle",
+            "companyAbout",
+            "companyIndustry",
+            "companySize",
+            "companyLinkedinUrl",
+            "workStyles",
+            "hiringNow",
+            "hiringRoles",
+            "hiringSkills",
+            "hiringLocations",
+            "hiringLevels",
             "adminTitle",
             "cvUrl",
             "profileCompletion",
@@ -216,6 +298,28 @@ class ProfileUpdateSerializer(serializers.Serializer):
     hiringTitle = serializers.CharField(
         required=False, allow_blank=True, max_length=TEXT_MAX_LENGTH
     )
+    companyAbout = serializers.CharField(
+        required=False, allow_blank=True, max_length=COMPANY_ABOUT_MAX_LENGTH
+    )
+    companyIndustry = serializers.CharField(
+        required=False, allow_blank=True, max_length=INDUSTRY_MAX_LENGTH
+    )
+    companySize = serializers.ChoiceField(
+        required=False, allow_blank=True, choices=choice_values(Profile.COMPANY_SIZE_CHOICES)
+    )
+    companyLinkedinUrl = serializers.CharField(
+        required=False, allow_blank=True, max_length=URL_MAX_LENGTH
+    )
+    workStyles = RecruiterListField(
+        max_items=len(Profile.WORK_STYLE_CHOICES), choices=choice_values(Profile.WORK_STYLE_CHOICES), required=False
+    )
+    hiringNow = serializers.BooleanField(required=False)
+    hiringRoles = RecruiterListField(max_items=MAX_HIRING_ROLES, required=False)
+    hiringSkills = RecruiterListField(max_items=MAX_HIRING_SKILLS, required=False)
+    hiringLocations = RecruiterListField(max_items=MAX_HIRING_LOCATIONS, required=False)
+    hiringLevels = RecruiterListField(
+        max_items=len(Profile.HIRING_LEVEL_CHOICES), choices=choice_values(Profile.HIRING_LEVEL_CHOICES), required=False
+    )
     adminTitle = serializers.CharField(
         required=False, allow_blank=True, max_length=TEXT_MAX_LENGTH
     )
@@ -234,6 +338,16 @@ class ProfileUpdateSerializer(serializers.Serializer):
         "companyWebsite": "company_website",
         "companyLocation": "company_location",
         "hiringTitle": "hiring_title",
+        "companyAbout": "company_about",
+        "companyIndustry": "company_industry",
+        "companySize": "company_size",
+        "companyLinkedinUrl": "company_linkedin_url",
+        "workStyles": "work_styles",
+        "hiringNow": "hiring_now",
+        "hiringRoles": "hiring_roles",
+        "hiringSkills": "hiring_skills",
+        "hiringLocations": "hiring_locations",
+        "hiringLevels": "hiring_levels",
         "adminTitle": "admin_title",
         "openToWork": "open_to_work",
     }
@@ -255,6 +369,12 @@ class ProfileUpdateSerializer(serializers.Serializer):
 
     def validate_companyWebsite(self, value):
         return normalize_url(value)
+
+    def validate_companyLinkedinUrl(self, value):
+        value = normalize_url(value)
+        if value and "linkedin.com/company/" not in value.lower():
+            raise serializers.ValidationError("Use the company's LinkedIn page, like linkedin.com/company/your-company.")
+        return value
 
     # ----- Saving -----
 

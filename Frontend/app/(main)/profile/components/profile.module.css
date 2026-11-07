@@ -282,3 +282,73 @@ a.contactRow:hover {
   color: var(--text-secondary);
   font-size: 14px;
 }
+
+/* ---------- Recruiters ---------- */
+
+/* "Talent Partner at Arbisoft" under the headline. */
+.companyLine {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--text-primary);
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.hiring {
+  display: grid;
+  gap: 16px;
+}
+
+.chipGroup .tags {
+  margin-top: 6px;
+}
+
+.companyCard {
+  display: grid;
+  gap: 16px;
+}
+
+.companyHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.companyName {
+  display: grid;
+  min-width: 0;
+}
+
+.companyName strong {
+  font-size: 16px;
+}
+
+.companyName span {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.companyFacts {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  font-size: 14px;
+}
+
+.companyFacts:empty {
+  display: none;
+}
+
+.companyFacts li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+}
+
+.companyFacts svg {
+  flex: none;
+  color: var(--text-secondary);
+}

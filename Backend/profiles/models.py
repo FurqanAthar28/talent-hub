@@ -84,6 +84,27 @@ class Profile(models.Model):
         (APPROVAL_REJECTED, "Not approved"),
     )
 
+    # ----- Recruiter company + hiring choices -----
+    COMPANY_SIZE_CHOICES = (
+        ("1-10", "1-10 people"),
+        ("11-50", "11-50 people"),
+        ("51-200", "51-200 people"),
+        ("201-1000", "201-1,000 people"),
+        ("1000+", "1,000+ people"),
+    )
+    WORK_STYLE_CHOICES = (
+        ("onsite", "On-site"),
+        ("hybrid", "Hybrid"),
+        ("remote", "Remote"),
+    )
+    HIRING_LEVEL_CHOICES = (
+        ("intern", "Internship"),
+        ("junior", "Junior"),
+        ("mid", "Mid-level"),
+        ("senior", "Senior"),
+        ("lead", "Lead / Manager"),
+    )
+
     # ----- Allowed values for `account_status` -----
     # (Deleted accounts are NOT a status: they have a `deleted_at` date, so
     #  they can be restored, and still remember if they were suspended.)
@@ -128,6 +149,20 @@ class Profile(models.Model):
     company_website = models.URLField(blank=True)
     company_location = models.CharField(max_length=255, blank=True)
     hiring_title = models.CharField(max_length=255, blank=True)
+    # About the company (all optional; shown on the recruiter's profile).
+    company_about = models.TextField(blank=True)
+    company_industry = models.CharField(max_length=100, blank=True)
+    company_size = models.CharField(max_length=20, choices=COMPANY_SIZE_CHOICES, blank=True)
+    company_linkedin_url = models.URLField(blank=True)
+    # Lists of short words, e.g. ["onsite", "remote"]. Allowed values and
+    # limits are checked in profiles/serializers.py (RecruiterListField).
+    work_styles = models.JSONField(default=list, blank=True)
+    # "Hiring for": what candidates should know before reaching out.
+    hiring_now = models.BooleanField(default=True)
+    hiring_roles = models.JSONField(default=list, blank=True)  # ["Backend Engineer", ...]
+    hiring_skills = models.JSONField(default=list, blank=True)  # ["Django", "React", ...]
+    hiring_locations = models.JSONField(default=list, blank=True)  # ["Lahore", "Remote (PK)"]
+    hiring_levels = models.JSONField(default=list, blank=True)  # ["junior", "mid"]
 
     # ----- Approval (candidates AND recruiters) -----
     # New people wait for an admin. Only approved people appear in search
