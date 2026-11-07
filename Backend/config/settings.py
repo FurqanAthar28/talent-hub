@@ -495,13 +495,14 @@ FRONTEND_URL = str(config("FRONTEND_URL", default=CORS_ALLOWED_ORIGINS[0])).rstr
 # 12c. AI FEATURES (see ai/provider.py)
 # =============================================================================
 
-# The AI is a free open model that runs on our own machine with Ollama, so no
-# profile or job text is sent to an AI company. Set it up once:
-#   1. Install Ollama (https://ollama.com)   2. ollama pull qwen2.5:3b
-# If Ollama isn't running, the app still works: AI buttons say "AI is unavailable right now".
+# The AI is a free open model that runs on our own machine with llama.cpp
+# (llama-server), so no profile or job text is sent to an AI company.
+# How to set it up and start it: see "AI features" in Backend/README.md.
+# If it isn't running, the app still works: AI buttons say "AI is unavailable right now".
 # Only point AI_BASE_URL at a server WE run, never at an AI company's API.
-AI_BASE_URL = str(config("AI_BASE_URL", default="http://127.0.0.1:11434/v1"))
-AI_MODEL = str(config("AI_MODEL", default="qwen2.5:3b"))
+AI_BASE_URL = str(config("AI_BASE_URL", default="http://127.0.0.1:8080/v1"))
+# llama-server answers with whatever model it was started with; the name is for logs.
+AI_MODEL = str(config("AI_MODEL", default="qwen2.5-3b-instruct"))
 # Must stay below the Next.js proxy's 30 seconds (PROXY_TIMEOUT_MS), or the
 # browser gets the proxy's error instead of our "AI is unavailable" message.
 AI_TIMEOUT_SECONDS = config("AI_TIMEOUT_SECONDS", default=25, cast=int)

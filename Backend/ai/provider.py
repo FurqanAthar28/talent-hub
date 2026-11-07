@@ -1,10 +1,10 @@
 """
 The single backend file that talks to the AI.
 
-The AI is a free open model that runs on OUR OWN machine with Ollama
+The AI is a free open model that runs on OUR OWN machine with llama.cpp
 (see settings.AI_BASE_URL), so nothing is sent to an AI company.
-Ollama speaks the same API as OpenAI, so we reuse the `openai` package
-as the client: no extra package needed.
+llama.cpp (and Ollama) speak the same API as OpenAI, so we reuse the
+`openai` package as the client: no extra package needed.
 
 Profile facts are sent without email, private notes, CVs, or other users' data.
 Failures become one safe "AI is unavailable" message for the page.
@@ -64,7 +64,7 @@ def _ask_for_json(system_prompt, user_text, max_tokens):
     """Ask the AI for JSON and reject answers that are not usable."""
     client = openai.OpenAI(
         base_url=settings.AI_BASE_URL,
-        # Ollama ignores the key, but the client needs some text here.
+        # Our local AI ignores the key, but the client needs some text here.
         api_key="local",
         timeout=settings.AI_TIMEOUT_SECONDS,
         max_retries=0,
@@ -81,11 +81,11 @@ def _ask_for_json(system_prompt, user_text, max_tokens):
             max_tokens=max_tokens,
         )
     except openai.APIStatusError as error:
-        # For example 404 when the model hasn't been downloaded ("ollama pull").
+        # For example when the model isn't loaded yet.
         logger.error("The AI returned HTTP %s", error.status_code)
         raise AIUnavailable from error
     except openai.APIConnectionError as error:
-        # Ollama isn't running, or it took longer than AI_TIMEOUT_SECONDS.
+        # The local AI isn't running, or it took longer than AI_TIMEOUT_SECONDS.
         logger.warning("Couldn't reach the AI: %s", type(error).__name__)
         raise AIUnavailable from error
 

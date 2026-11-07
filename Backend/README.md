@@ -72,16 +72,29 @@ so they never touch your real PostgreSQL data. Only the last line matters:
 
 All AI code lives in the `ai` app, and only `ai/provider.py` talks to the AI.
 
-The AI is free and private: an open model runs on your own machine with [Ollama](https://ollama.com),
-so no profile or job text is sent to an AI company. (The `openai` package is only the client;
-Ollama understands the same API.)
+The AI is free and private: an open model (Qwen 2.5 3B) runs on your own machine with
+[llama.cpp](https://github.com/ggml-org/llama.cpp), so no profile or job text is sent to an AI company.
+(The `openai` package is only the client; llama.cpp understands the same API.)
 
-- Install Ollama, then run `ollama pull qwen2.5:3b` once. Ollama keeps running in the background.
-- Without Ollama the app still works, and the AI buttons say "AI is unavailable right now".
+Set it up once (Windows):
+
+1. Download `llama-<build>-bin-win-cpu-x64.zip` from the llama.cpp releases page and unzip it to
+   `%LOCALAPPDATA%\llama.cpp\bin`.
+2. Download the model `qwen2.5-3b-instruct-q4_k_m.gguf` (about 2 GB) from
+   https://huggingface.co/Qwen/Qwen2.5-3B-Instruct-GGUF into `%LOCALAPPDATA%\llama.cpp\models`.
+
+Start it (keep this window open while you use the app):
+
+```
+"%LOCALAPPDATA%\llama.cpp\bin\llama-server.exe" -m "%LOCALAPPDATA%\llama.cpp\models\qwen2.5-3b-instruct-q4_k_m.gguf" --host 127.0.0.1 --port 8080 -c 4096
+```
+
+- Without it the app still works, and the AI buttons say "AI is unavailable right now".
+- [Ollama](https://ollama.com) works too: set `AI_BASE_URL=http://127.0.0.1:11434/v1` and `AI_MODEL=qwen2.5:3b`.
 - `AI_BASE_URL`, `AI_MODEL` and `AI_TIMEOUT_SECONDS` change where and which model runs.
   `AI_DAILY_LIMIT` sets the uses per person per day, for all AI buttons together (default 10).
-- On a server, Ollama must run there too (it needs a few GB of RAM). Only point `AI_BASE_URL` at a server you run.
-- `python manage.py test ai` never calls the real AI, so it's free and needs no Ollama.
+- On a server, llama.cpp (or Ollama) must run there too (it needs a few GB of RAM). Only point `AI_BASE_URL` at a server you run.
+- `python manage.py test ai` never calls the real AI, so it's fast and needs no local AI running.
 
 ## Deploying (for example on Render)
 

@@ -217,7 +217,7 @@ class HeadlineBioViewTests(TestCase):
         self.assertEqual(self.client.post(URL).data["headlines"], ["a", "b", "c"])
 
 
-@override_settings(AI_BASE_URL="http://ai.test/v1", AI_MODEL="qwen2.5:3b", AI_TIMEOUT_SECONDS=25)
+@override_settings(AI_BASE_URL="http://ai.test/v1", AI_MODEL="qwen2.5-3b-instruct", AI_TIMEOUT_SECONDS=25)
 class ProviderTests(SimpleTestCase):
     """The provider network call is replaced; response parsing stays real."""
 
@@ -255,7 +255,7 @@ class ProviderTests(SimpleTestCase):
 
         self.assertEqual(client_class.call_args.kwargs["base_url"], "http://ai.test/v1")
         create = client_class.return_value.chat.completions.create
-        self.assertEqual(create.call_args.kwargs["model"], "qwen2.5:3b")
+        self.assertEqual(create.call_args.kwargs["model"], "qwen2.5-3b-instruct")
         self.assertEqual(create.call_args.kwargs["max_tokens"], 100)
 
 
