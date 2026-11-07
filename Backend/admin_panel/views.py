@@ -12,6 +12,7 @@ WHAT'S IN THIS FILE
 4. Connections  -> list, connect, disconnect
 5. Audit log
 6. UI content   -> the editable texts
+(Reports have their own file: reports/admin_views.py, same "/api/admin/" prefix.)
 """
 
 from datetime import timedelta
@@ -38,6 +39,7 @@ from connections.network import connect_users, disconnect_users, network_connect
 from profiles.approval import allowed_rejection_reasons, approval_checks, can_be_approved
 from profiles.models import Experience, Profile, Project, Skill
 from profiles.permissions import IsAppAdmin, is_last_admin
+from reports.models import Report
 
 from .serializers import (
     AdminAuditLogSerializer,
@@ -173,6 +175,8 @@ def admin_stats_view(request):
             "experiences": Experience.objects.count(),
             # Same rule as the Connections list, so the two always agree.
             "connections": network_connections().count(),
+            # Reports from users that no admin has handled yet.
+            "openReports": Report.objects.filter(status=Report.STATUS_OPEN).count(),
             "pendingConnectionRequests": ConnectionRequest.objects.filter(
                 status=ConnectionRequest.STATUS_PENDING
             ).count(),
@@ -246,13 +250,30 @@ def admin_account_action_view(request, user_id):
     reason = serializer.validated_data["reason"]
 
     user = get_target_user(request, user_id)  # not yourself, not a superuser
+    problem = apply_account_action(request, user, action, reason)
+    if problem:
+        return Response({"message": problem}, status=status.HTTP_400_BAD_REQUEST)
+
+    name = user.get_full_name() or user.email
+    rules = ACCOUNT_ACTIONS[action]
+    return user_response(user.pk, rules["done"].format(name=name, days=settings.ACCOUNT_DELETION_GRACE_DAYS))
+
+
+def apply_account_action(request, user, action, reason, extra_metadata=None):
+    """
+    Do one account action and write it in the audit log.
+    Used by the Users page AND by Reports (so both follow the same rules).
+
+    Returns None when it worked, or a sentence saying why it can't be done now.
+    (Raises PermissionDenied for the last admin, like the other views.)
+    """
     if action in REMOVING_ACTIONS:
         refuse_if_last_admin(user)
 
     profile, _created = Profile.objects.get_or_create(user=user)
     rules = ACCOUNT_ACTIONS[action]
     if not rules["state_ok"](profile):
-        return Response({"message": rules["not_now"]}, status=status.HTTP_400_BAD_REQUEST)
+        return rules["not_now"]
 
     if action == "suspend":
         account_state.suspend(user, reason)
@@ -270,10 +291,9 @@ def admin_account_action_view(request, user_id):
         action=f"account_{action}",
         description=rules["log"].format(email=user.email, reason=reason),
         target_user=user,
-        metadata={"action": action, "reason": reason},
+        metadata={"action": action, "reason": reason, **(extra_metadata or {})},
     )
-    name = user.get_full_name() or user.email
-    return user_response(user.pk, rules["done"].format(name=name, days=settings.ACCOUNT_DELETION_GRACE_DAYS))
+    return None
 
 
 @api_view(["PATCH"])

@@ -7,6 +7,8 @@ so "stats/" below becomes "/api/admin/stats/".
 
 from django.urls import path
 
+from reports import admin_views as report_views
+
 from . import views
 
 app_name = "admin_panel"
@@ -24,6 +26,9 @@ urlpatterns = [
     path("connections/", views.admin_connections_view, name="connections"),
     path("connect-users/", views.admin_connect_users_view, name="connect-users"),
     path("disconnect-users/", views.admin_disconnect_users_view, name="disconnect-users"),
+    # --- Reports (made by users about a profile or a message) ---
+    path("reports/", report_views.admin_reports_view, name="reports"),
+    path("reports/<int:report_id>/resolve/", report_views.admin_resolve_report_view, name="report-resolve"),
     # --- Audit log and texts ---
     path("audit-logs/", views.admin_audit_logs_view, name="audit-logs"),
     path("ui-content/", views.admin_ui_content_view, name="ui-content"),

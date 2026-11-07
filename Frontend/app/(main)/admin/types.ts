@@ -17,6 +17,7 @@ export type AdminStats = {
   experiences: number;
   connections: number;
   pendingConnectionRequests: number;
+  openReports: number; // reports no admin has handled yet
 };
 
 export type AdminUser = {
@@ -105,4 +106,32 @@ export type ApprovalReview = {
   canApprove: boolean;
   needsLinkedinCheck: boolean;
   rejectionReasons: { value: RejectionReason; label: string }[];
+};
+
+// Must match AdminReportSerializer in Backend/reports/serializers.py
+export type ReportReason = "fake_profile" | "spam" | "scam" | "harassment" | "inappropriate" | "other";
+export type ReportAction = "dismiss" | "suspend" | "ban";
+
+export type AdminReport = {
+  id: number;
+  kind: "profile" | "message";
+  reason: ReportReason;
+  reasonLabel: string;
+  details: string; // what the reporter wrote (can be empty)
+  messageText: string; // a copy of the reported message (message reports only)
+  status: "open" | "dismissed" | "actioned";
+  actionTaken: ReportAction | "";
+  resolutionNote: string;
+  resolvedByName: string;
+  resolvedAt: string | null;
+  createdAt: string;
+  reporterName: string;
+  reporterEmail: string;
+  reportedUserId: number;
+  reportedUserName: string;
+  reportedUserEmail: string;
+  reportedUserRole: "candidate" | "recruiter" | "admin";
+  reportedUserAccountStatus: AccountStatus;
+  reportedUserDeleted: boolean;
+  openReportsAboutUser: number; // all open reports about this person (this one included)
 };

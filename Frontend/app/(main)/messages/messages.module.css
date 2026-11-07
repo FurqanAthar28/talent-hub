@@ -235,6 +235,50 @@
   color: rgba(255, 255, 255, 0.75);
 }
 
+/* The small "Report" flag next to the other person's message. */
+.bubbleRow {
+  align-items: center;
+  gap: 6px;
+}
+
+.reportMessage {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms ease, background-color 120ms ease;
+}
+
+.bubbleRow:hover .reportMessage,
+.reportMessage:focus-visible {
+  opacity: 1;
+}
+
+.reportMessage:hover {
+  background: var(--bg-light);
+  color: var(--danger);
+}
+
+.reportMessage:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+}
+
+/* Touch screens have no hover: keep the flag visible, but quiet. */
+@media (hover: none) {
+  .reportMessage {
+    opacity: 0.6;
+  }
+}
+
 .composer {
   display: flex;
   align-items: flex-end;

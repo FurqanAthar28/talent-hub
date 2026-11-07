@@ -4,6 +4,7 @@
  * Admin area, in 6 sections (listed in sections.ts; the frame is AdminShell):
  *   Overview     -> what needs you, key numbers with trends, sign-ups chart, recent actions
  *   Approvals    -> everyone waiting, oldest first
+ *   Reports      -> profiles and messages people reported: dismiss, suspend, ban
  *   Users        -> every account: role, approval, suspend / ban / delete / restore
  *   Connections  -> connect two people by hand, or remove a connection
  *   Activity log -> everything admins changed
@@ -40,6 +41,7 @@ import { isAdmin, useCurrentUser } from "../CurrentUserContext";
 import AdminShell from "./components/AdminShell";
 import ApprovalsSection from "./components/ApprovalsSection";
 import AuditLogsSection from "./components/AuditLogsSection";
+import ReportsSection, { type ReportsView } from "./components/ReportsSection";
 import OverviewSection from "./components/OverviewSection";
 import { buildInsights } from "./insights";
 import { sectionFromAddress, showSectionInAddress, type SectionId } from "./sections";
@@ -47,7 +49,15 @@ import ConnectionsSection from "./components/ConnectionsSection";
 import UiContentSection from "./components/UiContentSection";
 import ApprovalReview from "./components/ApprovalReview";
 import UsersSection from "./components/UsersSection";
-import type { AdminAuditLog, AdminConnection, AdminStats, AdminUiContentItem, AdminUser } from "./types";
+import type {
+  AdminAuditLog,
+  AdminConnection,
+  AdminReport,
+  AdminStats,
+  AdminUiContentItem,
+  AdminUser,
+  ReportAction,
+} from "./types";
 
 type Message = { tone: "success" | "error"; text: string } | null;
 
@@ -80,6 +90,10 @@ export default function AdminPage() {
   const [connections, setConnections] = useState<AdminConnection[]>([]);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
   const [texts, setTexts] = useState<AdminUiContentItem[]>([]);
+  const [openReports, setOpenReports] = useState<AdminReport[]>([]);
+  // Closed reports load only when the admin opens "Closed" (null = not loaded yet).
+  const [closedReports, setClosedReports] = useState<AdminReport[] | null>(null);
+  const [reportsView, setReportsView] = useState<ReportsView>("open");
 
   const [userSearch, setUserSearch] = useState("");
   const [userFilter, setUserFilter] = useState<UserFilter>("all");
@@ -93,6 +107,7 @@ export default function AdminPage() {
   const [connecting, setConnecting] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [savingTextKey, setSavingTextKey] = useState<string | null>(null);
+  const [busyReportId, setBusyReportId] = useState<number | null>(null);
   // The person whose approval Review window is open (null = closed).
   const [reviewing, setReviewing] = useState<AdminUser | null>(null);
 
@@ -113,8 +128,9 @@ export default function AdminPage() {
       adminApi.getConnections(),
       adminApi.getAuditLogs(),
       adminApi.getUiContentItems(),
+      adminApi.getReports("open"),
     ])
-      .then(([newStats, newUsers, newConnections, newLogs, newTexts]) => {
+      .then(([newStats, newUsers, newConnections, newLogs, newTexts, newReports]) => {
         if (!pageIsOpen) return;
         // Open the tab named in the address (?tab=users), if any.
         setTab((current) => sectionFromAddress() ?? current);
@@ -123,6 +139,7 @@ export default function AdminPage() {
         setConnections(newConnections);
         setAuditLogs(newLogs);
         setTexts(newTexts);
+        setOpenReports(newReports);
       })
       .catch((error: unknown) => {
         if (pageIsOpen) setMessage({ tone: "error", text: errorText(error, "Couldn't load the admin data.") });
@@ -263,6 +280,77 @@ export default function AdminPage() {
     }
   }
 
+  /** Show "Open" or "Closed" reports; closed ones load the first time they're needed. */
+  async function showReports(view: ReportsView) {
+    setReportsView(view);
+    if (view !== "closed" || closedReports !== null) return;
+    try {
+      setClosedReports(await adminApi.getReports("closed"));
+    } catch (error) {
+      setClosedReports([]);
+      setMessage({ tone: "error", text: errorText(error, "Couldn't load the closed reports.") });
+    }
+  }
+
+  /**
+   * Close a report. Always asks first. Suspend and ban ask for a reason
+   * (the person sees it) and close every open report about that person.
+   */
+  async function handleResolveReport(report: AdminReport, action: ReportAction) {
+    if (busyReportId !== null) return;
+    const name = report.reportedUserName;
+
+    const answer =
+      action === "dismiss"
+        ? await confirm({
+            title: "Dismiss this report?",
+            text: `Nothing changes for ${name}'s account. The report moves to Closed.`,
+            confirmLabel: "Dismiss",
+            tone: "primary",
+            note: { label: "Note for other admins (optional)", maxLength: REASON_MAX_LENGTH },
+          })
+        : await confirm({
+            title: ACCOUNT_ACTION_TEXT[action].title(name),
+            text:
+              ACCOUNT_ACTION_TEXT[action].text(me.deletionGraceDays) +
+              (report.openReportsAboutUser > 1
+                ? ` All ${report.openReportsAboutUser} open reports about them will be closed.`
+                : ""),
+            confirmLabel: ACCOUNT_ACTION_TEXT[action].confirmLabel,
+            tone: "danger",
+            note: {
+              label: "Reason (they will see this)",
+              placeholder: `e.g. ${report.reasonLabel}`,
+              maxLength: REASON_MAX_LENGTH,
+              required: true,
+            },
+          });
+    if (!answer.confirmed) return;
+
+    setBusyReportId(report.id);
+    setMessage(null);
+    try {
+      const closed = await adminApi.resolveReport(report.id, action, answer.note);
+      // Dismiss closes this one; suspend/ban close every open one about the person.
+      setOpenReports((list) =>
+        list.filter((item) =>
+          action === "dismiss" ? item.id !== report.id : item.reportedUserId !== report.reportedUserId
+        )
+      );
+      setClosedReports(null); // reload "Closed" next time it's opened
+      setMessage({ tone: "success", text: closed.message || "Report closed." });
+      if (action !== "dismiss") {
+        // Their account changed: refresh the Users list quietly.
+        void adminApi.getUsers().then(setUsers).catch(() => undefined);
+      }
+      void refreshSummary();
+    } catch (error) {
+      setMessage({ tone: "error", text: errorText(error, "Couldn't close the report.") });
+    } finally {
+      setBusyReportId(null);
+    }
+  }
+
   async function handleSaveText(item: AdminUiContentItem) {
     const value = textDrafts[item.key] ?? item.value;
     setSavingTextKey(item.key);
@@ -345,9 +433,16 @@ export default function AdminPage() {
   async function reloadAll() {
     setLoading(true);
     try {
-      const [newUsers, newConnections] = await Promise.all([adminApi.getUsers(), adminApi.getConnections()]);
+      const [newUsers, newConnections, newReports] = await Promise.all([
+        adminApi.getUsers(),
+        adminApi.getConnections(),
+        adminApi.getReports("open"),
+      ]);
       setUsers(newUsers);
       setConnections(newConnections);
+      setOpenReports(newReports);
+      setClosedReports(null);
+      if (reportsView === "closed") setClosedReports(await adminApi.getReports("closed"));
       await refreshSummary();
     } catch (error) {
       setMessage({ tone: "error", text: errorText(error, "Couldn't refresh the admin data.") });
@@ -360,7 +455,7 @@ export default function AdminPage() {
     <AdminShell
       active={tab}
       onChange={openSection}
-      counts={{ approvals: waiting.length }}
+      counts={{ approvals: waiting.length, reports: openReports.length }}
       adminName={me.fullName || me.email}
       actions={
         <button type="button" className="btn-outline btn-sm" onClick={reloadAll} disabled={loading}>
@@ -380,6 +475,7 @@ export default function AdminPage() {
               insights={insights}
               stats={stats}
               recentLogs={auditLogs.slice(0, RECENT_ACTIVITY_COUNT)}
+              openReports={openReports.length}
               text={text}
               onReview={setReviewing}
               onOpen={openSection}
@@ -390,6 +486,18 @@ export default function AdminPage() {
 
           {tab === "approvals" && (
             <ApprovalsSection waiting={waiting} onReview={setReviewing} formatDate={formatDate} />
+          )}
+
+          {tab === "reports" && (
+            <ReportsSection
+              view={reportsView}
+              setView={(view) => void showReports(view)}
+              openReports={openReports}
+              closedReports={closedReports}
+              busyReportId={busyReportId}
+              onResolve={handleResolveReport}
+              formatDate={formatDate}
+            />
           )}
 
           {tab === "users" && (

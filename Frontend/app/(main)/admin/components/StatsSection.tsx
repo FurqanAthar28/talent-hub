@@ -29,6 +29,11 @@ export default function StatsSection({ stats, text }: { stats: AdminStats; text:
           value: stats.pendingApprovals,
           warning: stats.pendingApprovals > 0,
         },
+        {
+          label: "Open reports",
+          value: stats.openReports,
+          warning: stats.openReports > 0,
+        },
       ],
     },
     {

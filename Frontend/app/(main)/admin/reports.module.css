@@ -1,0 +1,202 @@
+/*
+ * The admin Reports queue (components/ReportsSection.tsx).
+ * Colors and corners come from .shell (shell.module.css).
+ */
+
+.section {
+  display: grid;
+  gap: 16px;
+}
+
+/* The filter buttons come from users.module.css; here they sit on the page. */
+.section > [role="group"] {
+  padding: 0;
+  border-bottom: 0;
+}
+
+.list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--card-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.cardBusy {
+  opacity: 0.6;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.when {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.personText {
+  display: grid;
+  min-width: 0;
+}
+
+.personText strong {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.personText span {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.details {
+  margin: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.details .label {
+  display: inline;
+  margin: 0;
+}
+
+.message {
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 3px solid #f59e0b;
+  border-radius: var(--radius-sm);
+  background: var(--bg-light);
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.profileLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions > button {
+  width: auto; /* globals.css stretches buttons on phones */
+}
+
+.saving {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.outcome {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.outcome strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.note {
+  margin-left: 6px;
+  font-style: italic;
+}
+
+@media (max-width: 760px) {
+  .card {
+    padding: 16px 14px;
+  }
+
+  .person {
+    flex-wrap: wrap;
+  }
+
+  .personBadges {
+    width: 100%;
+    margin-left: 52px; /* line up under the name, past the avatar */
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .actions > button {
+    flex: 1;
+  }
+}

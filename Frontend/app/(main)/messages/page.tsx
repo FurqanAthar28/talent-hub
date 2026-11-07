@@ -17,11 +17,12 @@
  */
 
 import Link from "next/link";
-import { ArrowLeft, MessageSquare, SendHorizontal } from "lucide-react";
+import { ArrowLeft, Flag, MessageSquare, SendHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import { errorText } from "../../api/client";
+import ReportDialog from "../../components/ReportDialog";
 import { Avatar, EmptyState, Notice, Page } from "../../components/ui";
 import { LIVE_REFRESH_INTERVAL_MS } from "../../config/constants";
 import { MESSAGES } from "../../config/messages";
@@ -149,8 +150,12 @@ function ParticipantPanel({ conversation }: { conversation: Conversation }) {
   );
 }
 
-/** One message. Mine are purple, on the right. */
-function MessageBubble({ message }: { message: Message }) {
+/**
+ * One message. Mine are purple, on the right.
+ * The other person's messages get a small "Report" flag next to them
+ * (shown on hover or keyboard focus; always shown on touch screens).
+ */
+function MessageBubble({ message, onReport }: { message: Message; onReport: (message: Message) => void }) {
   return (
     <div className={`${styles.bubbleRow} ${message.isMine ? styles.bubbleRowMine : ""}`}>
       <div className={`${styles.bubble} ${message.isMine ? styles.bubbleMine : ""}`}>
@@ -159,6 +164,17 @@ function MessageBubble({ message }: { message: Message }) {
           {formatMessageTime(message.created_at)}
         </time>
       </div>
+      {!message.isMine && (
+        <button
+          type="button"
+          className={styles.reportMessage}
+          onClick={() => onReport(message)}
+          aria-label="Report this message"
+          title="Report this message"
+        >
+          <Flag size={14} aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 }
@@ -178,6 +194,7 @@ export default function MessagesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [threadLoading, setThreadLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [reportingMessage, setReportingMessage] = useState<Message | null>(null); // the Report box
   // Phones show one part at a time: the chat list, or the open chat.
   const [mobileView, setMobileView] = useState<"list" | "thread">("list");
 
@@ -491,7 +508,9 @@ export default function MessagesPage() {
                     />
                   </div>
                 ) : (
-                  messages.map((message) => <MessageBubble key={message.id} message={message} />)
+                  messages.map((message) => (
+                    <MessageBubble key={message.id} message={message} onReport={setReportingMessage} />
+                  ))
                 )}
               </div>
 
@@ -531,6 +550,15 @@ export default function MessagesPage() {
 
         {/* ---------- Right: about the person ---------- */}
         {activeConversation && <ParticipantPanel conversation={activeConversation} />}
+
+        {reportingMessage && (
+          <ReportDialog
+            target={{ kind: "message", reportedUserId: reportingMessage.sender, messageId: reportingMessage.id }}
+            name={reportingMessage.senderName || "this person"}
+            messagePreview={reportingMessage.body}
+            onClose={() => setReportingMessage(null)}
+          />
+        )}
       </div>
     </Page>
   );
