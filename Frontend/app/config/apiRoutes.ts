@@ -77,6 +77,12 @@ export const API_ROUTES = {
       `/connections/conversations/${conversationId}/messages/`,
   },
 
+  JOBS: {
+    LIST: "/jobs/", // GET with ?q=&type=&workStyle=&level=&recruiter= ; POST to post a job
+    MINE: "/jobs/mine/",
+    DETAIL: (jobId: Id) => `/jobs/${jobId}/`, // GET, PATCH, DELETE
+  },
+
   REPORTS: {
     CREATE: "/reports/", // POST { kind, reportedUserId, messageId?, reason, details }
   },
@@ -107,6 +113,9 @@ export const API_ROUTES = {
     REPORTS: (status: "open" | "closed") => `/admin/reports/?status=${status}`,
     // Close one: POST { action: "dismiss" | "suspend" | "ban", note }
     REPORT_RESOLVE: (reportId: Id) => `/admin/reports/${reportId}/resolve/`,
+    JOBS: "/admin/jobs/",
+    // Hide (with a reason the recruiter sees) or show: POST { hidden, reason }
+    JOB_VISIBILITY: (jobId: Id) => `/admin/jobs/${jobId}/visibility/`,
     AUDIT_LOGS: "/admin/audit-logs/",
     UI_CONTENT: "/admin/ui-content/",
     UI_CONTENT_ITEM: (key: string) =>

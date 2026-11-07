@@ -16,7 +16,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { BriefcaseBusiness, ChevronDown, Home, LogOut, MessageSquare, Pencil, ShieldCheck, UserRound, Users } from "lucide-react";
+import {
+  Briefcase,
+  BriefcaseBusiness,
+  ChevronDown,
+  Home,
+  LogOut,
+  MessageSquare,
+  Pencil,
+  ShieldCheck,
+  UserRound,
+  Users,
+} from "lucide-react";
 
 import BrandLogo from "@/app/components/brand/BrandLogo";
 import { Avatar, cx } from "@/app/components/ui";
@@ -41,8 +52,10 @@ export default function TopBar({ user, text, loggingOut, onLogout }: Props) {
   // The menu, in order. `show` decides who sees each link.
   const links = [
     { href: ROUTES.DASHBOARD, label: text("home", "Home"), icon: Home, show: !admin },
-    { href: ROUTES.CONNECTIONS, label: text("myNetwork", "My network"), icon: Users, show: !admin },
+    // `short`: the word under the icon in the phone's bottom bar (6 buttons fit only with short words).
+    { href: ROUTES.CONNECTIONS, label: text("myNetwork", "My network"), short: "Network", icon: Users, show: !admin },
     { href: ROUTES.RECRUITER_CANDIDATES, label: "Candidates", icon: BriefcaseBusiness, show: user.role === "recruiter" },
+    { href: ROUTES.JOBS, label: text("jobs", "Jobs"), icon: Briefcase, show: !admin },
     { href: ROUTES.MESSAGES, label: text("messages", "Messages"), icon: MessageSquare, show: !admin },
     { href: ROUTES.ADMIN, label: text("admin", "Admin"), icon: ShieldCheck, show: admin },
   ].filter((link) => link.show);
@@ -88,7 +101,10 @@ export default function TopBar({ user, text, loggingOut, onLogout }: Props) {
       {/* Phones: the same links at the bottom, plus Profile. */}
       {!admin && (
         <nav className={styles.tabBar} aria-label="Main menu">
-          {[...links, { href: ROUTES.PROFILE, label: "Profile", icon: UserRound }].map(({ href, label, icon: Icon }) => (
+          {[...links, { href: ROUTES.PROFILE, label: "Profile", icon: UserRound }].map((link) => {
+            const { href, icon: Icon } = link;
+            const label = "short" in link && link.short ? link.short : link.label;
+            return (
             <Link
               key={href}
               href={href}
@@ -100,7 +116,8 @@ export default function TopBar({ user, text, loggingOut, onLogout }: Props) {
               </span>
               {label}
             </Link>
-          ))}
+            );
+          })}
         </nav>
       )}
     </>

@@ -18,6 +18,7 @@ export type AdminStats = {
   connections: number;
   pendingConnectionRequests: number;
   openReports: number; // reports no admin has handled yet
+  openJobs: number; // live job posts (open, not hidden)
 };
 
 export type AdminUser = {

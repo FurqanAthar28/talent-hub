@@ -39,6 +39,7 @@ from connections.network import connect_users, disconnect_users, network_connect
 from profiles.approval import allowed_rejection_reasons, approval_checks, can_be_approved
 from profiles.models import Experience, Profile, Project, Skill
 from profiles.permissions import IsAppAdmin, is_last_admin
+from jobs.models import Job
 from reports.models import Report
 
 from .serializers import (
@@ -177,6 +178,8 @@ def admin_stats_view(request):
             "connections": network_connections().count(),
             # Reports from users that no admin has handled yet.
             "openReports": Report.objects.filter(status=Report.STATUS_OPEN).count(),
+            # Job posts that are open and not hidden by an admin.
+            "openJobs": Job.objects.filter(status=Job.STATUS_OPEN, hidden_by_admin=False).count(),
             "pendingConnectionRequests": ConnectionRequest.objects.filter(
                 status=ConnectionRequest.STATUS_PENDING
             ).count(),

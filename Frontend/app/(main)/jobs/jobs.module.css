@@ -1,0 +1,289 @@
+/* Jobs: browse, one job, and a recruiter's own jobs. */
+
+/* ---------- Search + filters ---------- */
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 20px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--card-color);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+}
+
+.inputSearch {
+  padding-left: 38px;
+  background: var(--card-color)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")
+    no-repeat 13px center;
+}
+
+.input:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.resultLine {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.linkButton {
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary-color);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- Job cards ---------- */
+
+.list {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.card {
+  display: grid;
+  gap: 12px;
+  padding: 20px 22px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--panel-radius, 16px);
+  background: var(--card-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.cardLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.cardLink:hover .title {
+  color: var(--primary-color);
+}
+
+.cardLink:hover {
+  text-decoration: none;
+}
+
+.cardTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.cardMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.company {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.posted {
+  flex: none;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.facts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--primary-light);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.snippet {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------- One job ---------- */
+
+.description {
+  font-size: 15px;
+  line-height: 1.7;
+  white-space: pre-line; /* keep the recruiter's line breaks */
+  overflow-wrap: anywhere;
+}
+
+.factsGrid {
+  display: grid;
+  gap: 12px;
+}
+
+.factRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.factRow svg {
+  flex: none;
+  color: var(--text-secondary);
+}
+
+.recruiterHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.recruiterHead strong {
+  display: block;
+}
+
+.recruiterHead span {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.sideButtons {
+  display: grid;
+  gap: 8px;
+}
+
+.sideButtons > * {
+  justify-content: center;
+}
+
+.hint {
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* ---------- My jobs (recruiter) ---------- */
+
+.manageActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.manageActions > * {
+  width: auto;
+}
+
+.hiddenNote {
+  padding: 10px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 13.5px;
+}
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 14px;
+}
+
+@media (max-width: 900px) {
+  .filters {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .filters > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .formGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .card {
+    padding: 16px;
+  }
+
+  .cardTop {
+    flex-wrap: wrap;
+  }
+
+  .posted {
+    width: 100%;
+    order: 3;
+  }
+}

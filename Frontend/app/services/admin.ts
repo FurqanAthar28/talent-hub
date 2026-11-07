@@ -16,6 +16,7 @@ import type {
   ReportAction,
 } from "../(main)/admin/types";
 import type { RejectionReason } from "../config/constants";
+import type { Job } from "./jobs";
 import { apiFetch, getApiMessage, readJson } from "../api/client";
 import { API_ROUTES } from "../config/apiRoutes";
 
@@ -87,6 +88,14 @@ export const disconnectUsers = (userId: number, connectedUserId: number) =>
 
 export const updateUiContentItem = (key: string, value: string) =>
   request<AdminUiContentItem>(API_ROUTES.ADMIN.UI_CONTENT_ITEM(key), jsonBody("PATCH", { value }));
+
+// ---------- Job posts ----------
+
+export const getAdminJobs = () => requestList<Job>(API_ROUTES.ADMIN.JOBS);
+
+/** Hide a job (the reason is shown to the recruiter) or show it again. */
+export const setJobHidden = (jobId: number, hidden: boolean, reason = "") =>
+  request<Job>(API_ROUTES.ADMIN.JOB_VISIBILITY(jobId), jsonBody("POST", { hidden, reason }));
 
 // ---------- Reports ----------
 

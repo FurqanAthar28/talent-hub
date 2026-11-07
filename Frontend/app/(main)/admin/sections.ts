@@ -6,9 +6,9 @@
  *   onPhone -> true: its own button in the bottom bar; false: under "More"
  */
 
-import { Activity, Flag, LayoutDashboard, Link2, type LucideIcon, Type, UserCheck, Users } from "lucide-react";
+import { Activity, Briefcase, Flag, LayoutDashboard, Link2, type LucideIcon, Type, UserCheck, Users } from "lucide-react";
 
-export const SECTION_IDS = ["overview", "approvals", "reports", "users", "connections", "activity", "texts"] as const;
+export const SECTION_IDS = ["overview", "approvals", "reports", "users", "jobs", "connections", "activity", "texts"] as const;
 export type SectionId = (typeof SECTION_IDS)[number];
 
 export type Section = {
@@ -53,6 +53,14 @@ export const SECTIONS: Section[] = [
     icon: Users,
     group: "Manage",
     onPhone: true,
+  },
+  {
+    id: "jobs",
+    label: "Jobs",
+    intro: "Every job recruiters posted. Hide one that breaks the rules; the recruiter sees why.",
+    icon: Briefcase,
+    group: "Manage",
+    onPhone: false,
   },
   {
     id: "connections",

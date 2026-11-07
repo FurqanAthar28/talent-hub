@@ -34,10 +34,13 @@ import { useUiContent } from "@/app/hooks/useUiContent";
 import type { ProfileDetails } from "@/app/services/profiles";
 import { getExperienceDuration } from "../edit/components/candidate/experience/experienceTypes";
 import styles from "./profile.module.css";
+import RecruiterJobs from "./RecruiterJobs";
 
 type ProfileViewProps = ProfileDetails & {
   isMine: boolean;
   actions?: ReactNode;
+  /** The person's USER id (for their jobs). profile.id is the PROFILE id. */
+  userId?: number;
 };
 
 /** One contact line with an icon. Not shown when there is no value. */
@@ -89,6 +92,7 @@ export default function ProfileView({
   experiences,
   isMine,
   actions,
+  userId,
 }: ProfileViewProps) {
   const text = useUiContent();
 
@@ -297,6 +301,8 @@ export default function ProfileView({
               )}
             </Panel>
           )}
+
+          {isRecruiter && userId !== undefined && <RecruiterJobs recruiterUserId={userId} isMine={isMine} />}
 
           {isRecruiter && (
             <Panel title={`About ${profile.companyName || "the company"}`}>

@@ -87,6 +87,7 @@ INSTALLED_APPS = [
     "recruiter",
     "ai",
     "reports",
+    "jobs",
 ]
 
 # Middleware = checkpoints every request passes through, top to bottom.

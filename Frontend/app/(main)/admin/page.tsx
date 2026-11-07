@@ -6,6 +6,7 @@
  *   Approvals    -> everyone waiting, oldest first
  *   Reports      -> profiles and messages people reported: dismiss, suspend, ban
  *   Users        -> every account: role, approval, suspend / ban / delete / restore
+ *   Jobs         -> every job post: hide (with a reason) or show again
  *   Connections  -> connect two people by hand, or remove a connection
  *   Activity log -> everything admins changed
  *   Page texts   -> edit the app's wording without code
@@ -41,7 +42,9 @@ import { isAdmin, useCurrentUser } from "../CurrentUserContext";
 import AdminShell from "./components/AdminShell";
 import ApprovalsSection from "./components/ApprovalsSection";
 import AuditLogsSection from "./components/AuditLogsSection";
+import JobsSection from "./components/JobsSection";
 import ReportsSection, { type ReportsView } from "./components/ReportsSection";
+import type { Job } from "../../services/jobs";
 import OverviewSection from "./components/OverviewSection";
 import { buildInsights } from "./insights";
 import { sectionFromAddress, showSectionInAddress, type SectionId } from "./sections";
@@ -94,6 +97,9 @@ export default function AdminPage() {
   // Closed reports load only when the admin opens "Closed" (null = not loaded yet).
   const [closedReports, setClosedReports] = useState<AdminReport[] | null>(null);
   const [reportsView, setReportsView] = useState<ReportsView>("open");
+  // Jobs load the first time the Jobs section opens (null = not loaded yet).
+  const [adminJobs, setAdminJobs] = useState<Job[] | null>(null);
+  const [busyJobId, setBusyJobId] = useState<number | null>(null);
 
   const [userSearch, setUserSearch] = useState("");
   const [userFilter, setUserFilter] = useState<UserFilter>("all");
@@ -152,6 +158,18 @@ export default function AdminPage() {
       pageIsOpen = false;
     };
   }, [canView, router]);
+
+  // Load the jobs the first time the Jobs section is opened.
+  useEffect(() => {
+    if (tab !== "jobs" || adminJobs !== null) return;
+    adminApi
+      .getAdminJobs()
+      .then(setAdminJobs)
+      .catch((error: unknown) => {
+        setAdminJobs([]);
+        setMessage({ tone: "error", text: errorText(error, "Couldn't load the jobs.") });
+      });
+  }, [tab, adminJobs]);
 
   /** After an action: refresh the numbers and the log, quietly. */
   const refreshSummary = useCallback(async () => {
@@ -351,6 +369,46 @@ export default function AdminPage() {
     }
   }
 
+  /** Hide a job (asks for a reason the recruiter sees) or show it again. */
+  async function handleSetJobHidden(job: Job, hidden: boolean) {
+    if (busyJobId !== null) return;
+    const answer = await confirm(
+      hidden
+        ? {
+            title: `Hide "${job.title}"?`,
+            text: "Candidates stop seeing it. The recruiter still sees the job, marked hidden, with your reason.",
+            confirmLabel: "Hide job",
+            tone: "danger",
+            note: {
+              label: "Reason (the recruiter will see this)",
+              placeholder: "e.g. Asks candidates to pay a fee",
+              maxLength: REASON_MAX_LENGTH,
+              required: true,
+            },
+          }
+        : {
+            title: `Show "${job.title}" again?`,
+            text: "Candidates can see it again if it's still open.",
+            confirmLabel: "Show job",
+            tone: "primary",
+          }
+    );
+    if (!answer.confirmed) return;
+
+    setBusyJobId(job.id);
+    setMessage(null);
+    try {
+      const updated = await adminApi.setJobHidden(job.id, hidden, answer.note);
+      setAdminJobs((list) => (list ?? []).map((item) => (item.id === updated.id ? updated : item)));
+      setMessage({ tone: "success", text: updated.message || (hidden ? "Job hidden." : "Job is visible again.") });
+      void refreshSummary();
+    } catch (error) {
+      setMessage({ tone: "error", text: errorText(error, "Couldn't change the job.") });
+    } finally {
+      setBusyJobId(null);
+    }
+  }
+
   async function handleSaveText(item: AdminUiContentItem) {
     const value = textDrafts[item.key] ?? item.value;
     setSavingTextKey(item.key);
@@ -443,6 +501,7 @@ export default function AdminPage() {
       setOpenReports(newReports);
       setClosedReports(null);
       if (reportsView === "closed") setClosedReports(await adminApi.getReports("closed"));
+      setAdminJobs(tab === "jobs" ? await adminApi.getAdminJobs() : null);
       await refreshSummary();
     } catch (error) {
       setMessage({ tone: "error", text: errorText(error, "Couldn't refresh the admin data.") });
@@ -517,6 +576,10 @@ export default function AdminPage() {
               onReview={setReviewing}
               formatDate={formatDate}
             />
+          )}
+
+          {tab === "jobs" && (
+            <JobsSection jobs={adminJobs} busyJobId={busyJobId} onSetHidden={(job, hidden) => void handleSetJobHidden(job, hidden)} />
           )}
 
           {tab === "connections" && (
