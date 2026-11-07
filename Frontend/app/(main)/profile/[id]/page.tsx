@@ -202,6 +202,7 @@ export default function UserProfilePage() {
         <ProfileView
           {...details}
           isMine={false}
+          userId={Number(userId)}
           actions={
             canUseConnections ? (
               <>

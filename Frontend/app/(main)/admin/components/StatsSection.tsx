@@ -40,6 +40,7 @@ export default function StatsSection({ stats, text }: { stats: AdminStats; text:
       title: "Activity",
       items: [
         { label: "Connections", value: stats.connections },
+        { label: "Live job posts", value: stats.openJobs },
         { label: text("adminPendingRequests", "Open connection requests"), value: stats.pendingConnectionRequests },
         { label: text("adminSkills", "Skills added"), value: stats.skills },
         { label: text("adminProjects", "Projects added"), value: stats.projects },

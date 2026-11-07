@@ -87,3 +87,18 @@ export const LIST_ITEM_MAX_LENGTH = 60;
 export function choiceLabel(options: readonly { value: string; label: string }[], value: string) {
   return options.find((option) => option.value === value)?.label ?? value;
 }
+
+// ---------- Job posts ----------
+// Must match Job.TYPE_CHOICES and the limits in Backend/jobs/models.py
+
+export const JOB_TYPES = [
+  { value: "full_time", label: "Full-time" },
+  { value: "part_time", label: "Part-time" },
+  { value: "contract", label: "Contract" },
+  { value: "internship", label: "Internship" },
+] as const;
+
+export const JOB_TITLE_MAX_LENGTH = 120;
+export const JOB_DESCRIPTION_MAX_LENGTH = 5000;
+export const JOB_SALARY_MAX_LENGTH = 100;
+export const JOB_MAX_SKILLS = 15;

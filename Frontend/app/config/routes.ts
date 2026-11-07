@@ -20,6 +20,9 @@ export const ROUTES = {
   USER_PROFILE: (userId: Id) => `/profile/${userId}`,
   CONNECTIONS: "/connections",
   MESSAGES: "/messages",
+  JOBS: "/jobs",
+  JOB: (jobId: Id) => `/jobs/${jobId}`,
+  MY_JOBS: "/jobs/manage", // a recruiter's own jobs
   RECRUITER_CANDIDATES: "/recruiter/candidates",
   RECRUITER_CANDIDATE: (userId: Id) => `/recruiter/candidates/${userId}`,
   ADMIN: "/admin",
@@ -34,6 +37,7 @@ export const PRIVATE_PATH_PREFIXES = [
   ROUTES.PROFILE,
   ROUTES.CONNECTIONS,
   ROUTES.MESSAGES,
+  ROUTES.JOBS,
   ROUTES.RECRUITER_CANDIDATES,
   ROUTES.ADMIN,
 ];

@@ -15,10 +15,12 @@ import { ROUTES } from "../../config/routes";
 import { useUiContent } from "../../hooks/useUiContent";
 import { fetchMyProfileDetails, type ProfileDetails } from "../../services/profiles";
 import AdminProfile from "./components/admin/AdminProfile";
+import { useCurrentUser } from "../CurrentUserContext";
 import ProfileView from "./components/ProfileView";
 
 export default function MyProfilePage() {
   const text = useUiContent();
+  const me = useCurrentUser();
 
   const [details, setDetails] = useState<ProfileDetails | null>(null);
   const [error, setError] = useState("");
@@ -51,6 +53,7 @@ export default function MyProfilePage() {
         <ProfileView
           {...details}
           isMine
+          userId={me.id}
           actions={
             <>
               <Link href={ROUTES.PROFILE_EDIT} className="btn-primary">

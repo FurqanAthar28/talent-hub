@@ -352,3 +352,38 @@ a.contactRow:hover {
   flex: none;
   color: var(--text-secondary);
 }
+
+/* "Open jobs" on a recruiter's profile. */
+.jobList {
+  display: grid;
+  list-style: none;
+}
+
+.jobList li + li {
+  border-top: 1px solid var(--border-color);
+}
+
+.jobRow {
+  display: grid;
+  gap: 2px;
+  padding: 10px 0;
+  color: inherit;
+}
+
+.jobRow:hover {
+  text-decoration: none;
+}
+
+.jobRow:hover strong {
+  color: var(--primary-color);
+}
+
+.jobRow span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.panelLink {
+  font-size: 13.5px;
+}
