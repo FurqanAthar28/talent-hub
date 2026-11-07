@@ -117,13 +117,22 @@ def give_back_one_use(user, day):
     AIDailyUsage.objects.filter(user=user, day=day, count__gt=0).update(count=F("count") - 1)
 
 
-def answer_with_ai(user, feature, facts, write):
+def wants_fresh_answer(request):
+    """
+    True when the person pressed "New suggestions" / "Write another draft".
+    Then we skip the saved answer and ask the AI again (this uses one daily use).
+    Must match the `fresh` flag sent by Frontend AiWriter.tsx and askForJobDraft.
+    """
+    return request.data.get("fresh") is True
+
+
+def answer_with_ai(user, feature, facts, write, fresh=False):
     """
     The steps every AI button shares: reuse a saved answer, check the daily
     limit, call the AI (`write`), and give the use back if the AI fails.
     """
     cache_key = cache_key_for(feature, user, facts)
-    saved_answer = cache.get(cache_key)
+    saved_answer = None if fresh else cache.get(cache_key)
     if saved_answer is not None:
         return Response(saved_answer)
 
@@ -138,7 +147,7 @@ def answer_with_ai(user, feature, facts, write):
         )
 
     try:
-        answer = write(facts)
+        answer = write(facts, fresh=fresh)
     except provider.AIUnavailable:
         give_back_one_use(user, today)
         return Response({"message": UNAVAILABLE_MESSAGE}, status=503)
@@ -159,7 +168,9 @@ def headline_bio_view(request):
             status=400,
         )
 
-    return answer_with_ai(request.user, "headline-bio", facts, provider.write_headline_and_bios)
+    return answer_with_ai(
+        request.user, "headline-bio", facts, provider.write_headline_and_bios, fresh=wants_fresh_answer(request)
+    )
 
 
 class JobDraftSerializer(serializers.Serializer):
@@ -198,12 +209,13 @@ def job_draft_view(request):
         "location": data.get("location", "").strip(),
     }
 
-    def write(job_facts):
+    def write(job_facts, fresh):
         return provider.write_job_draft(
             job_facts,
+            fresh=fresh,
             title_max_length=Job.TITLE_MAX_LENGTH,
             description_max_length=Job.DESCRIPTION_MAX_LENGTH,
             max_skills=Job.MAX_SKILLS,
         )
 
-    return answer_with_ai(request.user, "job-draft", facts, write)
+    return answer_with_ai(request.user, "job-draft", facts, write, fresh=wants_fresh_answer(request))

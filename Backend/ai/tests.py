@@ -130,6 +130,33 @@ class HeadlineBioViewTests(TestCase):
         self.fake_ai.assert_called_once()
         self.assertEqual(self.uses_today(), 1)
 
+    def test_new_suggestions_skip_the_saved_answer_and_use_a_use(self):
+        self.client.post(URL)
+        self.fake_ai.return_value = {**GOOD_ANSWER, "headlines": ["Django developer"]}
+
+        response = self.client.post(URL, {"fresh": True}, format="json")
+
+        self.assertEqual(response.data["headlines"], ["Django developer"])
+        self.assertEqual(self.fake_ai.call_count, 2)
+        self.assertTrue(self.fake_ai.call_args.kwargs["fresh"])
+        self.assertEqual(self.uses_today(), 2)
+        # The new answer is now the saved one.
+        self.assertEqual(self.client.post(URL).data["headlines"], ["Django developer"])
+
+    def test_fresh_must_be_exactly_true(self):
+        self.client.post(URL)
+        self.client.post(URL, {"fresh": "yes"}, format="json")
+
+        self.assertEqual(self.fake_ai.call_count, 1)
+
+    @override_settings(AI_DAILY_LIMIT=1)
+    def test_new_suggestions_respect_the_daily_limit(self):
+        self.client.post(URL)
+
+        response = self.client.post(URL, {"fresh": True}, format="json")
+
+        self.assertEqual(response.status_code, 429)
+
     def test_changed_profile_gets_a_new_answer(self):
         self.client.post(URL)
         Skill.objects.create(profile=self.profile, name="Django")
@@ -223,6 +250,45 @@ class HeadlineBioViewTests(TestCase):
 
         self.assertEqual(self.client.post(URL).data["headlines"], ["AWS Specialist", "Cloud engineer"])
 
+    def test_sentences_with_made_up_numbers_are_dropped(self):
+        self.fake_ai.return_value = {
+            "headlines": ["Python developer", "Developer with 5 years of experience"],
+            "short_bio": "Python developer in Lahore.",
+            "long_bio": "I build apps with Python. I have over 5 years of experience. Since 2015 I work remotely.",
+        }
+
+        data = self.client.post(URL).data
+
+        self.assertEqual(data["headlines"], ["Python developer"])
+        self.assertEqual(data["bios"]["long"], "I build apps with Python.")
+
+    def test_numbers_from_the_profile_are_kept(self):
+        Experience.objects.create(
+            profile=self.profile, title="Developer", company="Arbisoft", start_date="2022-01-01", current=True
+        )
+        self.fake_ai.return_value = {**GOOD_ANSWER, "long_bio": "I have worked at Arbisoft since 2022."}
+
+        self.assertEqual(self.client.post(URL).data["bios"]["long"], "I have worked at Arbisoft since 2022.")
+
+    def test_job_seeking_is_dropped_when_not_open_to_work(self):
+        self.profile.open_to_work = False
+        self.profile.save()
+        self.fake_ai.return_value = {**GOOD_ANSWER, "long_bio": "I build Django apps. I am looking for new opportunities."}
+
+        self.assertEqual(self.client.post(URL).data["bios"]["long"], "I build Django apps.")
+
+    def test_job_seeking_is_kept_when_open_to_work(self):
+        self.profile.open_to_work = True
+        self.profile.save()
+        self.fake_ai.return_value = {**GOOD_ANSWER, "long_bio": "I build Django apps. I am looking for new opportunities."}
+
+        self.assertIn("looking for", self.client.post(URL).data["bios"]["long"])
+
+    def test_a_bio_left_empty_is_replaced_by_the_other(self):
+        self.fake_ai.return_value = {**GOOD_ANSWER, "long_bio": "I have 7 years of experience."}
+
+        self.assertEqual(self.client.post(URL).data["bios"]["long"], GOOD_ANSWER["short_bio"])
+
     def test_extra_and_too_long_headlines_are_dropped(self):
         self.fake_ai.return_value = {**GOOD_ANSWER, "headlines": ["x" * 256, "a", "b", "c", "d"]}
 
@@ -270,6 +336,17 @@ class ProviderTests(SimpleTestCase):
         self.assertEqual(create.call_args.kwargs["model"], "qwen2.5-3b-instruct")
         self.assertEqual(create.call_args.kwargs["max_tokens"], 100)
         self.assertLessEqual(create.call_args.kwargs["temperature"], 0.3)  # sticks to the facts
+
+    def test_new_suggestions_get_a_bit_more_variety(self):
+        with patch("ai.provider.openai.OpenAI") as client_class:
+            client_class.return_value.chat.completions.create.return_value = SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(GOOD_ANSWER)))]
+            )
+            provider._ask_for_json("system", "{}", 100, fresh=True)
+
+        temperature = client_class.return_value.chat.completions.create.call_args.kwargs["temperature"]
+        self.assertGreater(temperature, provider.AI_TEMPERATURE)
+        self.assertLessEqual(temperature, 0.7)
 
 
 JOB_DRAFT_URL = "/api/ai/job-draft/"
@@ -373,6 +450,13 @@ class JobDraftViewTests(TestCase):
 
         self.assertEqual(self.fake_ai.call_count, 1)
         self.assertEqual(self.uses_today(), 1)
+
+    def test_another_draft_skips_the_saved_answer(self):
+        self.client.post(JOB_DRAFT_URL, DRAFT_REQUEST, format="json")
+        self.client.post(JOB_DRAFT_URL, {**DRAFT_REQUEST, "fresh": True}, format="json")
+
+        self.assertEqual(self.fake_ai.call_count, 2)
+        self.assertEqual(self.uses_today(), 2)
 
     @override_settings(AI_DAILY_LIMIT=1)
     def test_daily_limit_is_shared_with_the_headline_writer(self):

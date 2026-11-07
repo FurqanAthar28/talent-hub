@@ -107,8 +107,10 @@ export const updateJob = (jobId: number, changes: Partial<JobInput> & { status?:
  */
 export const askForJobDraft = (
   notes: string,
-  picked: Pick<JobInput, "employmentType" | "workStyle" | "experienceLevel" | "location">
-) => request<JobDraft>(API_ROUTES.AI.JOB_DRAFT, json("POST", { notes, ...picked }), "AI is unavailable right now.");
+  picked: Pick<JobInput, "employmentType" | "workStyle" | "experienceLevel" | "location">,
+  fresh = false // true = "Write another draft": skip the saved answer (see wants_fresh_answer)
+) =>
+  request<JobDraft>(API_ROUTES.AI.JOB_DRAFT, json("POST", { notes, ...picked, fresh }), "AI is unavailable right now.");
 
 export const deleteJob = (jobId: number) =>
   request<void>(API_ROUTES.JOBS.DETAIL(jobId), { method: "DELETE" }, "Couldn't delete the job.");

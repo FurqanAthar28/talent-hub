@@ -12,6 +12,7 @@ Failures become one safe "AI is unavailable" message for the page.
 
 import json
 import logging
+import re
 
 import openai
 from django.conf import settings
@@ -28,6 +29,10 @@ JOB_DRAFT_MAX_TOKENS = 600
 # Low = the model sticks to the facts it was given instead of getting creative.
 # Small models invent things easily, so this matters more than with big ones.
 AI_TEMPERATURE = 0.2
+# "New suggestions": a little more variety, or the new answer would be
+# almost the same as the last one. Higher than this and the 3B model starts
+# making up years and dates. The checks below still apply.
+AI_FRESH_TEMPERATURE = 0.4
 
 # Must match the job form's limits (Backend/jobs/models.py).
 JOB_TITLE_MIN_LENGTH = 3
@@ -41,6 +46,9 @@ Rules:
 2. Never claim results or impact (like "improved performance" or "large datasets").
 3. Never call the person an expert, specialist, or guru.
 4. A short, honest text is better than a long one with made-up details.
+5. If "experience" is empty, don't mention years, employers, projects or teams.
+6. Say the person is looking for work only if "open_to_work" is true.
+7. Write the bios in first person ("I build..."), never "this developer".
 Return JSON only with exactly these keys:
 headlines, short_bio, long_bio.
 headlines must contain exactly 3 different plain-text headlines under 120 characters.
@@ -74,7 +82,7 @@ def is_configured():
     return bool(settings.AI_BASE_URL)
 
 
-def _ask_for_json(system_prompt, user_text, max_tokens):
+def _ask_for_json(system_prompt, user_text, max_tokens, fresh=False):
     """Ask the AI for JSON and reject answers that are not usable."""
     client = openai.OpenAI(
         base_url=settings.AI_BASE_URL,
@@ -93,7 +101,7 @@ def _ask_for_json(system_prompt, user_text, max_tokens):
             ],
             response_format={"type": "json_object"},
             max_tokens=max_tokens,
-            temperature=AI_TEMPERATURE,
+            temperature=AI_FRESH_TEMPERATURE if fresh else AI_TEMPERATURE,
         )
     except openai.APIStatusError as error:
         # For example when the model isn't loaded yet.
@@ -122,7 +130,29 @@ def _oversells(text, profile_text):
     return any(word in lowered and word not in profile_text for word in BOASTFUL_WORDS)
 
 
-def write_headline_and_bios(profile_facts):
+def _without_made_up_numbers(text, known_numbers):
+    """
+    Drop each sentence with a number the profile doesn't have, like "5 years"
+    or "since 2015". Small models invent these on thin profiles, and a wrong
+    number is the worst kind of made-up detail.
+    """
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    kept = [sentence for sentence in sentences if set(re.findall(r"\d+", sentence)) <= known_numbers]
+    return " ".join(kept).strip()
+
+
+# Phrases that say someone wants a job. Dropped when the profile says
+# they're NOT open to work, because the model ignores that rule sometimes.
+JOB_SEEKING_WORDS = ("looking for", "seeking", "open to new", "opportunit", "available for")
+
+
+def _without_job_seeking(text):
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    kept = [sentence for sentence in sentences if not any(word in sentence.lower() for word in JOB_SEEKING_WORDS)]
+    return " ".join(kept).strip()
+
+
+def write_headline_and_bios(profile_facts, fresh=False):
     """
     Returns {"headlines": [up to 3 texts], "bios": {"short": text, "long": text}}.
     Raises AIUnavailable if the AI can't give a usable answer.
@@ -132,6 +162,7 @@ def write_headline_and_bios(profile_facts):
             HEADLINE_BIO_SYSTEM_PROMPT,
             json.dumps(profile_facts, ensure_ascii=False),
             HEADLINE_BIO_MAX_TOKENS,
+            fresh=fresh,
         )
         headlines = [_clean(headline) for headline in answer["headlines"]]
         short_bio = _clean(answer["short_bio"])
@@ -140,13 +171,23 @@ def write_headline_and_bios(profile_facts):
         logger.warning("AI answer was missing a headline or a bio")
         raise AIUnavailable
 
-    # The prompt asks for short texts, but a model can ignore that, so we check.
+    # The prompt asks for short, honest texts, but a model can ignore that, so we check.
     profile_text = json.dumps(profile_facts, ensure_ascii=False).lower()
+    known_numbers = set(re.findall(r"\d+", profile_text))
     headlines = [
         headline
         for headline in headlines
-        if 0 < len(headline) <= HEADLINE_MAX_LENGTH and not _oversells(headline, profile_text)
+        if 0 < len(headline) <= HEADLINE_MAX_LENGTH
+        and not _oversells(headline, profile_text)
+        and _without_made_up_numbers(headline, known_numbers) == headline
     ][:3]
+    short_bio = _without_made_up_numbers(short_bio, known_numbers)
+    long_bio = _without_made_up_numbers(long_bio, known_numbers)
+    if not profile_facts.get("open_to_work"):
+        short_bio = _without_job_seeking(short_bio)
+        long_bio = _without_job_seeking(long_bio)
+    # If every sentence of one bio was dropped, offer the other one instead.
+    short_bio, long_bio = short_bio or long_bio, long_bio or short_bio
 
     if not headlines or not short_bio or not long_bio:
         logger.warning("AI answer was missing a headline or a bio")
@@ -155,7 +196,7 @@ def write_headline_and_bios(profile_facts):
     return {"headlines": headlines, "bios": {"short": short_bio, "long": long_bio}}
 
 
-def write_job_draft(job_facts, title_max_length, description_max_length, max_skills):
+def write_job_draft(job_facts, title_max_length, description_max_length, max_skills, fresh=False):
     """
     Returns {"title": text, "description": text, "skills": [texts]}.
     The limits come from the Job model, so the draft always fits the form.
@@ -166,6 +207,7 @@ def write_job_draft(job_facts, title_max_length, description_max_length, max_ski
             JOB_DRAFT_SYSTEM_PROMPT,
             json.dumps(job_facts, ensure_ascii=False),
             JOB_DRAFT_MAX_TOKENS,
+            fresh=fresh,
         )
         title = " ".join(_clean(answer["title"]).split())
         description = _clean(answer["description"])

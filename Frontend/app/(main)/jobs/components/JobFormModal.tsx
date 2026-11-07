@@ -95,12 +95,17 @@ export default function JobFormModal({ job, onSaved, onClose }: Props) {
     setDraftError("");
     try {
       // The picked type, level, style and place help the AI, so they go along.
-      const draft = await askForJobDraft(notes.trim(), {
-        employmentType: form.employmentType,
-        workStyle: form.workStyle,
-        experienceLevel: form.experienceLevel,
-        location: form.location,
-      });
+      // After one draft, the button asks for a NEW one (`fresh`), not the saved one.
+      const draft = await askForJobDraft(
+        notes.trim(),
+        {
+          employmentType: form.employmentType,
+          workStyle: form.workStyle,
+          experienceLevel: form.experienceLevel,
+          location: form.location,
+        },
+        drafted
+      );
       setForm((previous) => ({
         ...previous,
         title: draft.title,
@@ -155,7 +160,7 @@ export default function JobFormModal({ job, onSaved, onClose }: Props) {
           <div className={styles.aiRow}>
             {/* type="button": without it, this button would submit (post) the form. */}
             <button type="button" className="btn-outline btn-sm" disabled={!canDraft} onClick={() => void handleDraft()}>
-              {drafting ? "Writing... (up to 30 seconds)" : "Write draft"}
+              {drafting ? "Writing... (up to 30 seconds)" : drafted ? "Write another draft" : "Write draft"}
             </button>
             <span className={styles.aiNote}>
               Runs on our own server: your notes aren&apos;t sent to any AI company.
