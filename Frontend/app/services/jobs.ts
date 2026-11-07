@@ -32,6 +32,16 @@ export type Job = {
     companyWebsite: string;
   };
   isMine: boolean;
+  // Candidates only: which of the job's skills they have. null for everyone
+  // else, and when the job lists no skills. Plain matching, no AI.
+  skillMatch: { matched: string[]; missing: string[] } | null;
+};
+
+/** A draft from "Write with AI". Must match write_job_draft in Backend/ai/provider.py */
+export type JobDraft = {
+  title: string;
+  description: string;
+  skills: string[];
 };
 
 /** What the "Post a job" form sends. */
@@ -90,6 +100,17 @@ export const createJob = (input: JobInput) =>
 
 export const updateJob = (jobId: number, changes: Partial<JobInput> & { status?: Job["status"] }) =>
   request<Job>(API_ROUTES.JOBS.DETAIL(jobId), json("PATCH", changes), "Couldn't save the job.");
+
+/**
+ * Turn rough notes into a draft (recruiters). Nothing is posted: the draft only
+ * fills the form. Field names must match JobDraftSerializer in Backend/ai/views.py.
+ */
+export const askForJobDraft = (
+  notes: string,
+  picked: Pick<JobInput, "employmentType" | "workStyle" | "experienceLevel" | "location">,
+  fresh = false // true = "Write another draft": skip the saved answer (see wants_fresh_answer)
+) =>
+  request<JobDraft>(API_ROUTES.AI.JOB_DRAFT, json("POST", { notes, ...picked, fresh }), "AI is unavailable right now.");
 
 export const deleteJob = (jobId: number) =>
   request<void>(API_ROUTES.JOBS.DETAIL(jobId), { method: "DELETE" }, "Couldn't delete the job.");

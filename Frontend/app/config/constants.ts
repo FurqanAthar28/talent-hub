@@ -102,3 +102,6 @@ export const JOB_TITLE_MAX_LENGTH = 120;
 export const JOB_DESCRIPTION_MAX_LENGTH = 5000;
 export const JOB_SALARY_MAX_LENGTH = 100;
 export const JOB_MAX_SKILLS = 15;
+// The rough notes for "Write with AI". Must match JOB_NOTES_* in Backend/ai/views.py
+export const JOB_NOTES_MIN_LENGTH = 20;
+export const JOB_NOTES_MAX_LENGTH = 1000;

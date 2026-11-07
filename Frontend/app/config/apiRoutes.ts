@@ -95,6 +95,7 @@ export const API_ROUTES = {
 
   AI: {
     HEADLINE_BIO: "/ai/headline-bio/", // answers with options; saves nothing
+    JOB_DRAFT: "/ai/job-draft/", // answers with a draft job; posts nothing
   },
 
   ADMIN: {

@@ -38,7 +38,14 @@ export function useAiWriter(fillBox: (field: AiField, text: string) => void) {
     setError("");
 
     try {
-      const response = await apiFetch(API_ROUTES.AI.HEADLINE_BIO, { method: "POST" });
+      // Once options are showing, the button asks for NEW ones. Without `fresh`,
+      // Django gives back the saved answer (same profile = same answer).
+      // `fresh` must match wants_fresh_answer in Backend/ai/views.py.
+      const response = await apiFetch(API_ROUTES.AI.HEADLINE_BIO, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fresh: options !== null }),
+      });
       const data = await readJson(response);
 
       if (response.ok) {
@@ -81,9 +88,9 @@ export function AiLabelRow({ ai, field, children }: RowProps) {
         disabled={ai.loading}
         onClick={() => void ai.generate(field)}
       >
-        {ai.loading ? "Writing..." : "Write with AI"}
+        {ai.loading ? "Writing..." : ai.options ? "New suggestions" : "Write with AI"}
       </button>
-      <span className={styles.aiPrivacyNote}>Suggestions use OpenAI and your profile facts.</span>
+      <span className={styles.aiPrivacyNote}>Uses your profile facts. Runs on our own server, not an AI company.</span>
     </div>
   );
 }

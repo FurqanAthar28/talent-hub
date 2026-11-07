@@ -3,14 +3,21 @@
 /**
  * "Post a job" / "Edit job": a pop-up form (reuses FormModal from Edit Profile,
  * and the chip box from the recruiter profile for skills).
+ *
+ * A new job also gets "Write with AI": rough notes in, a draft title,
+ * description and skills out. The draft only fills the form; nothing is
+ * posted until the recruiter checks it and presses "Post job".
  */
 
 import { useEffect, useState } from "react";
+import { Sparkles } from "lucide-react";
 
 import {
   HIRING_LEVELS,
   JOB_DESCRIPTION_MAX_LENGTH,
   JOB_MAX_SKILLS,
+  JOB_NOTES_MAX_LENGTH,
+  JOB_NOTES_MIN_LENGTH,
   JOB_SALARY_MAX_LENGTH,
   JOB_TITLE_MAX_LENGTH,
   JOB_TYPES,
@@ -18,7 +25,7 @@ import {
   WORK_STYLES,
 } from "@/app/config/constants";
 import { errorText } from "@/app/api/client";
-import { createJob, updateJob, type Job, type JobInput } from "@/app/services/jobs";
+import { askForJobDraft, createJob, updateJob, type Job, type JobInput } from "@/app/services/jobs";
 import { getSkillOptions } from "@/app/services/skills";
 import FormModal from "../../profile/edit/components/candidate/FormModal";
 import TagInput from "../../profile/edit/components/recruiter/TagInput";
@@ -59,6 +66,11 @@ export default function JobFormModal({ job, onSaved, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [skillOptions, setSkillOptions] = useState<string[]>([]);
+  // "Write with AI" (new jobs only)
+  const [notes, setNotes] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState("");
+  const [drafted, setDrafted] = useState(false); // shows "check it before posting"
 
   useEffect(() => {
     getSkillOptions()
@@ -74,6 +86,39 @@ export default function JobFormModal({ job, onSaved, onClose }: Props) {
     form.title.trim().length >= 3 &&
     form.description.trim().length >= 30 &&
     (!needsLocation || form.location.trim() !== "");
+
+  const canDraft = notes.trim().length >= JOB_NOTES_MIN_LENGTH && !drafting;
+
+  async function handleDraft() {
+    if (!canDraft) return;
+    setDrafting(true);
+    setDraftError("");
+    try {
+      // The picked type, level, style and place help the AI, so they go along.
+      // After one draft, the button asks for a NEW one (`fresh`), not the saved one.
+      const draft = await askForJobDraft(
+        notes.trim(),
+        {
+          employmentType: form.employmentType,
+          workStyle: form.workStyle,
+          experienceLevel: form.experienceLevel,
+          location: form.location,
+        },
+        drafted
+      );
+      setForm((previous) => ({
+        ...previous,
+        title: draft.title,
+        description: draft.description,
+        skills: draft.skills.length > 0 ? draft.skills : previous.skills,
+      }));
+      setDrafted(true);
+    } catch (problem) {
+      setDraftError(errorText(problem, "AI is unavailable right now."));
+    } finally {
+      setDrafting(false);
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -99,6 +144,39 @@ export default function JobFormModal({ job, onSaved, onClose }: Props) {
       onSave={handleSave}
       onClose={onClose}
     >
+      {!job && (
+        <div className={styles.aiBox}>
+          <label htmlFor="job-notes">
+            <Sparkles size={14} aria-hidden="true" /> Write with AI (optional)
+          </label>
+          <textarea
+            id="job-notes"
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Rough notes, e.g. React dev for our fintech app, 3+ years, TypeScript, Lahore office, health insurance"
+            rows={3}
+            maxLength={JOB_NOTES_MAX_LENGTH}
+          />
+          <div className={styles.aiRow}>
+            {/* type="button": without it, this button would submit (post) the form. */}
+            <button type="button" className="btn-outline btn-sm" disabled={!canDraft} onClick={() => void handleDraft()}>
+              {drafting ? "Writing... (up to 30 seconds)" : drafted ? "Write another draft" : "Write draft"}
+            </button>
+            <span className={styles.aiNote}>
+              Runs on our own server: your notes aren&apos;t sent to any AI company.
+            </span>
+          </div>
+          <div aria-live="polite">
+            {draftError && <p className={styles.aiError}>{draftError}</p>}
+            {drafted && !draftError && (
+              <p className={styles.aiNote}>
+                Draft filled in below. Check it&apos;s accurate and edit it: nothing is posted until you press Post job.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="form-group">
         <label htmlFor="job-title">
           Job title <span className="required-star">*</span>
