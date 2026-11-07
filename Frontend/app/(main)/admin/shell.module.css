@@ -1,18 +1,60 @@
 /*
- * The admin frame: dark sidebar (desktop), bottom bar + "More" sheet (phone).
+ * The admin frame: light sidebar (desktop), bottom bar + "More" sheet (phone).
  *
- * Admin colors live here, on .shell, so every admin file can use them:
- *   --ink         the sidebar and the "needs your attention" card
- *   --ink-raised  hover / active items on the ink
- *   --ink-text    calm text on the ink
- *   --canvas      the page behind the cards (cool, so white cards stand out)
+ * LOOK: shadcn/ui style. White cards, thin grey borders, small radius,
+ * near-black buttons, one quiet accent (violet) for charts and focus rings.
+ *
+ * The admin colors live here, on .shell. They REPLACE the app's colors
+ * (from globals.css) only inside the admin area, so the shared pieces
+ * (panels, badges, buttons, the Review and confirm boxes) follow the
+ * admin look automatically, and the rest of the app stays as it is.
  */
 
 .shell {
-  /* --ink, --ink-raised and --ink-text come from globals.css */
-  --ink-line: rgba(255, 255, 255, 0.08);
-  --canvas: var(--background-color);
-  --rail-width: 248px;
+  /* shadcn "zinc" colors */
+  --background-color: #fafafa;
+  --canvas: #fafafa;
+  --card-color: #ffffff;
+  --bg-light: #f4f4f5; /* "muted": hover rows, soft fills */
+  --text-primary: #09090b;
+  --text-secondary: #71717a;
+  --text-muted: #71717a;
+  --border-color: #e4e4e7;
+  --input-border: #e4e4e7;
+
+  /* Buttons and the selected item: near black, like shadcn's default. */
+  --primary-color: #18181b;
+  --primary-hover: #27272a;
+  --primary-light: #f4f4f5;
+
+  /* The one color accent: charts, focus rings, small highlights. */
+  --accent: #7c3aed;
+  --accent-soft: #f5f3ff;
+  --ring: rgba(124, 58, 237, 0.35);
+
+  /* Kept for the files that still use the old names. */
+  --ink: #18181b;
+  --ink-raised: #27272a;
+  --ink-text: #a1a1aa;
+  --ink-line: #e4e4e7;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 12px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-pop: 0 10px 30px rgba(0, 0, 0, 0.12);
+
+  /* Shared pieces (components/ui) read these; outside the admin they keep their defaults. */
+  --panel-radius: 12px;
+  --panel-title-weight: 600;
+  --badge-radius: 6px;
+  --badge-weight: 500;
+  --notice-radius: 8px;
+
+  --rail-width: 240px;
   --top-offset: var(--topbar-height); /* the app's top bar */
   --gap: 24px;
 
@@ -23,8 +65,75 @@
   margin: 0 auto;
   padding: calc(var(--top-offset) + var(--gap)) var(--gap) 56px;
   min-height: 100vh;
+  color: var(--text-primary);
 }
 
+/* The page behind the admin area: the same soft grey as the shell. */
+:global(body):has(.shell) {
+  background: #fafafa;
+}
+
+/* ---------- Buttons inside the admin area (shadcn sizes and corners) ---------- */
+
+.shell :global(.btn-primary),
+.shell :global(.btn-outline),
+.shell :global(.btn-secondary),
+.shell :global(.btn-danger-outline) {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.shell :global(.btn-sm) {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.shell :global(.btn-primary) {
+  border: 1px solid var(--primary-color);
+  background: var(--primary-color);
+  color: #fafafa;
+}
+
+.shell :global(.btn-primary:hover:not(:disabled)) {
+  background: #3f3f46;
+  border-color: #3f3f46;
+}
+
+.shell :global(.btn-outline),
+.shell :global(.btn-secondary) {
+  border: 1px solid var(--border-color);
+  background: var(--card-color);
+  color: var(--text-primary);
+}
+
+.shell :global(.btn-outline:hover:not(:disabled)),
+.shell :global(.btn-secondary:hover:not(:disabled)) {
+  background: var(--bg-light);
+}
+
+.shell :global(.btn-danger-outline) {
+  border: 1px solid #fecaca;
+  background: var(--card-color);
+  color: #dc2626;
+}
+
+.shell :global(.btn-danger-outline:hover:not(:disabled)) {
+  background: #fef2f2;
+}
+
+.shell :global(.btn-primary:focus-visible),
+.shell :global(.btn-outline:focus-visible),
+.shell :global(.btn-secondary:focus-visible),
+.shell :global(.btn-danger-outline:focus-visible) {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+}
 
 /* ---------- Sidebar ---------- */
 
@@ -32,31 +141,37 @@
   position: sticky;
   top: calc(var(--top-offset) + var(--gap));
   align-self: start;
+  display: flex;
+  flex-direction: column;
   max-height: calc(100vh - var(--top-offset) - 2 * var(--gap));
   overflow-y: auto;
-  padding: 20px 12px;
-  border-radius: 18px;
-  background: var(--ink);
-  color: var(--ink-text);
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  background: var(--card-color);
+  box-shadow: var(--shadow-sm);
+  color: var(--text-primary);
 }
 
 .identity {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 4px 8px 20px;
-  margin-bottom: 8px;
-  border-bottom: 1px solid var(--ink-line);
+  gap: 10px;
+  padding: 6px 8px 14px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-color);
 }
 
 .identityText {
   display: grid;
   min-width: 0;
+  line-height: 1.3;
 }
 
 .identityText strong {
-  color: #fff;
-  font-size: 15px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -66,54 +181,65 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12.5px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 
 .navGroup {
   display: grid;
   gap: 2px;
-  padding-top: 16px;
+  padding-top: 14px;
 }
 
 .navHeading {
-  padding: 0 12px 6px;
+  padding: 0 10px 6px;
   font-size: 12px;
-  font-weight: 600;
-  color: rgba(189, 182, 220, 0.6);
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 .navItem {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  height: 40px;
-  padding: 0 12px;
+  height: 36px;
+  padding: 0 10px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: transparent;
-  color: inherit;
+  color: #3f3f46;
   font: inherit;
-  font-size: 14.5px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.navItem svg {
+  color: var(--text-secondary);
 }
 
 .navItem:hover {
-  background: var(--ink-raised);
-  color: #fff;
+  background: var(--bg-light);
+  color: var(--text-primary);
 }
 
 .navItem:focus-visible {
-  outline: 2px solid #c4b5fd;
-  outline-offset: 1px;
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
 }
 
 .navItemActive,
 .navItemActive:hover {
-  background: #fff;
-  color: var(--ink);
+  background: var(--bg-light);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.navItemActive svg {
+  color: var(--text-primary);
 }
 
 .navItem span:first-of-type {
@@ -121,14 +247,16 @@
 }
 
 .navCount {
-  min-width: 22px;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: #f59e0b;
-  color: #231a00;
-  font-size: 12px;
-  font-weight: 700;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-color);
+  color: #fafafa;
+  font-size: 11.5px;
+  line-height: 20px;
+  font-weight: 600;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- Section header ---------- */
@@ -142,23 +270,23 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  margin: 4px 0 20px;
+  margin: 2px 0 20px;
 }
 
 .title {
   margin: 0;
-  font-size: 30px;
-  line-height: 1.15;
-  font-weight: 750;
-  letter-spacing: -0.025em;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
 }
 
 .intro {
-  margin: 6px 0 0;
+  margin: 4px 0 0;
   max-width: 62ch;
   color: var(--text-secondary);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .headerActions {
@@ -185,13 +313,12 @@
     display: none;
   }
 
-
   .title {
-    font-size: 24px;
+    font-size: 21px;
   }
 
   .intro {
-    font-size: 14px;
+    font-size: 13.5px;
   }
 
   .header {
@@ -201,11 +328,10 @@
 
   /* Phones: header buttons shrink to their icon (the words stay for screen readers). */
   .headerActions :global(.btn-outline) {
-    width: 40px;
-    height: 40px;
+    width: 36px;
+    height: 36px;
     padding: 0;
     justify-content: center;
-    border-radius: 999px;
   }
 
   .headerActions :global(.btn-outline) span {
@@ -226,7 +352,7 @@
     grid-auto-flow: column;
     grid-auto-columns: 1fr;
     padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
-    background: rgba(255, 255, 255, 0.97);
+    background: rgba(255, 255, 255, 0.96);
     border-top: 1px solid var(--border-color);
     backdrop-filter: blur(10px);
   }
@@ -239,26 +365,27 @@
     min-height: 52px;
     padding: 6px 2px;
     border: 0;
-    border-radius: 12px;
+    border-radius: var(--radius-md);
     background: transparent;
     color: var(--text-secondary);
     font: inherit;
     font-size: 11.5px;
-    font-weight: 600;
+    font-weight: 500;
     cursor: pointer;
   }
 
   .barItem:focus-visible {
-    outline: 2px solid var(--primary-color);
-    outline-offset: -2px;
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--ring);
   }
 
   .barItemActive {
-    color: var(--primary-color);
+    color: var(--text-primary);
+    font-weight: 600;
   }
 
   .barItemActive .barIcon {
-    background: var(--primary-light);
+    background: var(--bg-light);
   }
 
   .barIcon {
@@ -277,11 +404,11 @@
     min-width: 18px;
     padding: 0 5px;
     border-radius: 999px;
-    background: #f59e0b;
-    color: #231a00;
+    background: var(--primary-color);
+    color: #fafafa;
     font-size: 11px;
     line-height: 18px;
-    font-weight: 700;
+    font-weight: 600;
   }
 
   .sheet[open] {
@@ -293,15 +420,15 @@
     max-width: 100%;
     margin: 0;
     padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
-    border: 0;
-    border-radius: 20px 20px 0 0;
+    border: 1px solid var(--border-color);
+    border-radius: 16px 16px 0 0;
     background: var(--card-color);
     color: var(--text-primary);
     animation: sheetUp 180ms ease-out;
   }
 
   .sheet::backdrop {
-    background: rgba(29, 24, 56, 0.45);
+    background: rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -310,17 +437,17 @@
   justify-content: space-between;
   align-items: center;
   padding: 4px 8px 8px;
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .sheetClose {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--bg-light);
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--card-color);
   color: var(--text-primary);
   cursor: pointer;
 }
@@ -328,11 +455,11 @@
 .sheetItem {
   display: flex;
   align-items: flex-start;
-  gap: 14px;
+  gap: 12px;
   width: 100%;
-  padding: 14px 12px;
+  padding: 12px;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-primary);
   font: inherit;
@@ -352,7 +479,7 @@
 
 .sheetItemActive,
 .sheetItem:hover {
-  background: var(--primary-light);
+  background: var(--bg-light);
 }
 
 @keyframes sheetUp {

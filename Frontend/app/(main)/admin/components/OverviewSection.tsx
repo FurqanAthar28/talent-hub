@@ -82,7 +82,7 @@ export default function OverviewSection({
 
   return (
     <div className={styles.overview}>
-      {/* 1. Needs your attention: the one dark card on the page. */}
+      {/* 1. Needs your attention: the first card on the page, with a colored edge. */}
       <section className={styles.attention} aria-labelledby="attention-title">
         <div className={styles.attentionMain}>
           {waiting.length > 0 ? (

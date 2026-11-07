@@ -6,14 +6,14 @@
   margin: auto;
   padding: 0;
   border: 1px solid var(--border-color);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   background: var(--card-color);
   color: var(--text-primary);
-  box-shadow: 0 24px 48px rgba(17, 12, 34, 0.18); /* it floats above the page */
+  box-shadow: var(--shadow-pop); /* it floats above the page */
 }
 
 .dialog::backdrop {
-  background: rgba(17, 12, 34, 0.45);
+  background: rgba(0, 0, 0, 0.4);
 }
 
 .box {
@@ -35,7 +35,7 @@
 
 .title {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   overflow-wrap: anywhere;
 }
 
@@ -78,15 +78,14 @@
   gap: 6px;
   padding: 6px 12px;
   border: 1px solid var(--border-color);
-  border-radius: 999px;
+  border-radius: var(--radius-md);
   color: var(--text-primary);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .link:hover {
-  border-color: var(--primary-color);
-  color: var(--primary-color);
+  background: var(--bg-light);
   text-decoration: none;
 }
 
@@ -97,7 +96,7 @@
 .checks {
   list-style: none;
   border: 1px solid var(--border-color);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 }
 
 .check {
@@ -144,7 +143,7 @@
 .tag {
   flex-shrink: 0;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-md);
   background: var(--bg-light);
   color: var(--text-secondary);
   font-size: 12px;
@@ -161,7 +160,7 @@
   gap: 10px;
   align-items: flex-start;
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--primary-light);
   font-size: 14px;
   font-weight: 600;
@@ -195,7 +194,7 @@
   align-items: center;
   padding: 10px 12px;
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-size: 14px;
 }
 

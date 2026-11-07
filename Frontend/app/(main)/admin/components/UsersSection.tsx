@@ -232,7 +232,7 @@ export default function UsersSection({
                 <span role="cell" className={styles.actions}>
                   {busy && <span className={styles.saving}>{text("adminUpdating", "Saving...")}</span>}
                   {!busy && waiting && (
-                    <button type="button" className="btn-primary btn-sm" onClick={() => onReview(user)}>
+                    <button type="button" className="btn-outline btn-sm" onClick={() => onReview(user)}>
                       Review
                     </button>
                   )}
