@@ -26,9 +26,12 @@ def display_name(user):
 class CreateReportSerializer(serializers.Serializer):
     """What a user sends from the "Report" box."""
 
-    kind = serializers.ChoiceField(choices=[Report.KIND_PROFILE, Report.KIND_MESSAGE])
-    reportedUserId = serializers.IntegerField()
+    kind = serializers.ChoiceField(choices=[Report.KIND_PROFILE, Report.KIND_MESSAGE, Report.KIND_JOB])
+    # For a job report the server works out the person (the job's recruiter),
+    # so this is optional there and only checked against it.
+    reportedUserId = serializers.IntegerField(required=False, allow_null=True)
     messageId = serializers.IntegerField(required=False, allow_null=True)
+    jobId = serializers.IntegerField(required=False, allow_null=True)
     reason = serializers.ChoiceField(choices=[value for value, _label in Report.REASON_CHOICES])
     details = serializers.CharField(
         required=False, allow_blank=True, max_length=Report.DETAILS_MAX_LENGTH, trim_whitespace=True
@@ -36,6 +39,11 @@ class CreateReportSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         attrs["details"] = attrs.get("details", "")
+        if attrs["kind"] == Report.KIND_JOB:
+            if not attrs.get("jobId"):
+                raise serializers.ValidationError("Choose the job you want to report.")
+        elif not attrs.get("reportedUserId"):
+            raise serializers.ValidationError("Choose the person you want to report.")
         if attrs["kind"] == Report.KIND_MESSAGE and not attrs.get("messageId"):
             raise serializers.ValidationError("Choose the message you want to report.")
         if attrs["reason"] == Report.REASON_OTHER and not attrs["details"]:
@@ -47,7 +55,7 @@ class ResolveReportSerializer(serializers.Serializer):
     """What an admin sends to close a report."""
 
     action = serializers.ChoiceField(
-        choices=[Report.ACTION_DISMISS, Report.ACTION_SUSPEND, Report.ACTION_BAN]
+        choices=[Report.ACTION_DISMISS, Report.ACTION_SUSPEND, Report.ACTION_BAN, Report.ACTION_HIDE_JOB]
     )
     note = serializers.CharField(
         required=False, allow_blank=True, max_length=Report.NOTE_MAX_LENGTH, trim_whitespace=True
@@ -56,6 +64,7 @@ class ResolveReportSerializer(serializers.Serializer):
     def validate(self, attrs):
         attrs["note"] = attrs.get("note", "")
         if attrs["action"] != Report.ACTION_DISMISS and not attrs["note"]:
+            # Suspend, ban and hide_job: the person (or the job's recruiter) sees the reason.
             raise serializers.ValidationError("Please give a reason (the person will see it).")
         return attrs
 
@@ -83,6 +92,10 @@ class AdminReportSerializer(serializers.ModelSerializer):
     reportedUserAccountStatus = serializers.SerializerMethodField()
     reportedUserDeleted = serializers.SerializerMethodField()
     messageText = serializers.CharField(source="message_text", read_only=True)
+    # Job reports. jobId is null once the recruiter deleted the job; jobTitle is the copy.
+    jobId = serializers.IntegerField(source="job_id", read_only=True, allow_null=True)
+    jobTitle = serializers.CharField(source="job_title", read_only=True)
+    jobHidden = serializers.SerializerMethodField()
     actionTaken = serializers.CharField(source="action_taken", read_only=True)
     resolutionNote = serializers.CharField(source="resolution_note", read_only=True)
     resolvedByName = serializers.SerializerMethodField()
@@ -99,6 +112,9 @@ class AdminReportSerializer(serializers.ModelSerializer):
             "reasonLabel",
             "details",
             "messageText",
+            "jobId",
+            "jobTitle",
+            "jobHidden",
             "status",
             "actionTaken",
             "resolutionNote",
@@ -118,6 +134,10 @@ class AdminReportSerializer(serializers.ModelSerializer):
 
     def get_reasonLabel(self, report):
         return REASON_TEXT.get(report.reason, report.reason)
+
+    def get_jobHidden(self, report):
+        # report.job is loaded with select_related("job") in admin_views.py (no extra query).
+        return bool(report.job and report.job.hidden_by_admin)
 
     # The reporter may have deleted their account since (the report stays).
     def get_reporterName(self, report):

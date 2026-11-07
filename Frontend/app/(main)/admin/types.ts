@@ -111,15 +111,19 @@ export type ApprovalReview = {
 
 // Must match AdminReportSerializer in Backend/reports/serializers.py
 export type ReportReason = "fake_profile" | "spam" | "scam" | "harassment" | "inappropriate" | "other";
-export type ReportAction = "dismiss" | "suspend" | "ban";
+export type ReportAction = "dismiss" | "suspend" | "ban" | "hide_job"; // hide_job: job reports only
 
 export type AdminReport = {
   id: number;
-  kind: "profile" | "message";
+  kind: "profile" | "message" | "job";
   reason: ReportReason;
   reasonLabel: string;
   details: string; // what the reporter wrote (can be empty)
   messageText: string; // a copy of the reported message (message reports only)
+  // Job reports only. jobId is null once the recruiter deleted the job; jobTitle is a copy.
+  jobId: number | null;
+  jobTitle: string;
+  jobHidden: boolean;
   status: "open" | "dismissed" | "actioned";
   actionTaken: ReportAction | "";
   resolutionNote: string;

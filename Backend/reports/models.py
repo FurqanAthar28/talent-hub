@@ -1,5 +1,5 @@
 """
-Reports: a user tells the admins "this profile or this message is a problem".
+Reports: a user tells the admins "this profile, message or job is a problem".
 
 ONE ROW = ONE REPORT
   - kind "profile": about a person's profile (fake, spam, ...)
@@ -10,7 +10,8 @@ ONE ROW = ONE REPORT
 
 LIFE OF A REPORT
   open  -> an admin looks at it ->  dismissed  (no problem found)
-                                 ->  actioned   (the account was suspended or banned)
+                                 ->  actioned   (the account was suspended or banned,
+                                                 or the reported job was hidden)
 """
 
 from django.conf import settings
@@ -22,14 +23,17 @@ class Report(models.Model):
     reporter_id: int | None
     reported_user_id: int
     message_id: int | None
+    job_id: int | None
     resolved_by_id: int | None
 
     # ----- What is reported -----
     KIND_PROFILE = "profile"
     KIND_MESSAGE = "message"
+    KIND_JOB = "job"
     KIND_CHOICES = (
         (KIND_PROFILE, "Profile"),
         (KIND_MESSAGE, "Message"),
+        (KIND_JOB, "Job"),
     )
 
     # ----- Why (the reporter picks one) -----
@@ -62,10 +66,12 @@ class Report(models.Model):
     ACTION_DISMISS = "dismiss"
     ACTION_SUSPEND = "suspend"
     ACTION_BAN = "ban"
+    ACTION_HIDE_JOB = "hide_job"  # only for job reports
     ACTION_CHOICES = (
         (ACTION_DISMISS, "Dismissed"),
         (ACTION_SUSPEND, "Suspended"),
         (ACTION_BAN, "Banned"),
+        (ACTION_HIDE_JOB, "Job hidden"),
     )
 
     # Longest "tell us more" text, and longest admin note.
@@ -94,6 +100,15 @@ class Report(models.Model):
         related_name="reports",
     )
     message_text = models.TextField(blank=True)  # copy of the message, see top of file
+    # SET_NULL: if the recruiter deletes the job, keep the report (and the title copy).
+    job = models.ForeignKey(
+        "jobs.Job",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reports",
+    )
+    job_title = models.CharField(max_length=255, blank=True)  # copy of the title, see top of file
     reason = models.CharField(max_length=30, choices=REASON_CHOICES)
     details = models.CharField(max_length=DETAILS_MAX_LENGTH, blank=True)
 

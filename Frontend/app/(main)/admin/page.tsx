@@ -313,6 +313,8 @@ export default function AdminPage() {
   /**
    * Close a report. Always asks first. Suspend and ban ask for a reason
    * (the person sees it) and close every open report about that person.
+   * "Hide job" asks for a reason (the recruiter sees it) and closes every
+   * open report about that job.
    */
   async function handleResolveReport(report: AdminReport, action: ReportAction) {
     if (busyReportId !== null) return;
@@ -326,6 +328,21 @@ export default function AdminPage() {
             confirmLabel: "Dismiss",
             tone: "primary",
             note: { label: "Note for other admins (optional)", maxLength: REASON_MAX_LENGTH },
+          })
+        : action === "hide_job"
+        ? await confirm({
+            title: `Hide "${report.jobTitle}"?`,
+            text:
+              "Candidates stop seeing it. The recruiter still sees the job, marked hidden, with your reason. " +
+              "Every open report about this job will be closed.",
+            confirmLabel: "Hide job",
+            tone: "danger",
+            note: {
+              label: "Reason (the recruiter will see this)",
+              placeholder: `e.g. ${report.reasonLabel}`,
+              maxLength: REASON_MAX_LENGTH,
+              required: true,
+            },
           })
         : await confirm({
             title: ACCOUNT_ACTION_TEXT[action].title(name),
@@ -349,15 +366,23 @@ export default function AdminPage() {
     setMessage(null);
     try {
       const closed = await adminApi.resolveReport(report.id, action, answer.note);
-      // Dismiss closes this one; suspend/ban close every open one about the person.
+      // Dismiss closes this one; hide_job closes every open one about the job;
+      // suspend/ban close every open one about the person.
       setOpenReports((list) =>
         list.filter((item) =>
-          action === "dismiss" ? item.id !== report.id : item.reportedUserId !== report.reportedUserId
+          action === "dismiss"
+            ? item.id !== report.id
+            : action === "hide_job"
+              ? item.jobId !== report.jobId
+              : item.reportedUserId !== report.reportedUserId
         )
       );
       setClosedReports(null); // reload "Closed" next time it's opened
       setMessage({ tone: "success", text: closed.message || "Report closed." });
-      if (action !== "dismiss") {
+      if (action === "hide_job") {
+        // The job changed: reload the Jobs section next time it's opened.
+        setAdminJobs(null);
+      } else if (action !== "dismiss") {
         // Their account changed: refresh the Users list quietly.
         void adminApi.getUsers().then(setUsers).catch(() => undefined);
       }

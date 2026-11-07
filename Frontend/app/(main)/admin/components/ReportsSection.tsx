@@ -3,19 +3,21 @@
 /**
  * Reports from users, as a queue of cards:
  *
- *   [Reason] [Profile | Message]          reported 2 d ago by Sara
+ *   [Reason] [Profile | Message | Job]    reported 2 d ago by Sara
  *   (avatar) Zain Ahmed  zain@...  [3 open reports] [Suspended]
  *   "What the reporter wrote"
- *   > the reported message (message reports only)
- *   [View profile]                      [Dismiss] [Suspend] [Ban]
+ *   > the reported message, or the reported job (with a link)
+ *   [View profile]                      [Dismiss] [Hide job] [Suspend] [Ban]
  *
  * "Open" shows what still needs a decision (newest first); "Closed" shows
  * what admins decided. Suspend and ban ask for a reason in the admin page
  * (the person sees it) and close EVERY open report about that person.
+ * "Hide job" (job reports only) hides the job, with a reason the recruiter
+ * sees, and closes every open report about that job.
  */
 
 import Link from "next/link";
-import { ExternalLink, Flag, MessageSquare, UserRound } from "lucide-react";
+import { Briefcase, ExternalLink, Flag, MessageSquare, UserRound } from "lucide-react";
 
 import { Avatar, Badge, EmptyState, cx } from "@/app/components/ui";
 import { ROUTES } from "@/app/config/routes";
@@ -49,7 +51,14 @@ const ACTION_WORDS: Record<ReportAction, string> = {
   dismiss: "Dismissed",
   suspend: "Suspended",
   ban: "Banned",
+  hide_job: "Job hidden",
 };
+
+const KINDS = {
+  profile: { label: "Profile", icon: UserRound },
+  message: { label: "Message", icon: MessageSquare },
+  job: { label: "Job", icon: Briefcase },
+} as const;
 
 function AccountBadge({ report }: { report: AdminReport }) {
   if (report.reportedUserDeleted) return <Badge tone="neutral">Deleted</Badge>;
@@ -74,7 +83,9 @@ function ReportCard({
   // Same rules as ACCOUNT_ACTIONS in Django: suspend only active accounts, ban unless banned.
   const canSuspend = !report.reportedUserDeleted && status === "active";
   const canBan = !report.reportedUserDeleted && status !== "banned";
-  const KindIcon = report.kind === "message" ? MessageSquare : UserRound;
+  // Only while the job still exists and isn't hidden already.
+  const canHideJob = report.kind === "job" && report.jobId !== null && !report.jobHidden;
+  const { label: kindLabel, icon: KindIcon } = KINDS[report.kind];
 
   return (
     <li className={cx(styles.card, busy && styles.cardBusy)}>
@@ -83,7 +94,7 @@ function ReportCard({
           <Badge tone={SERIOUS.has(report.reason) ? "danger" : "warning"}>{report.reasonLabel}</Badge>
           <span className={styles.kind}>
             <KindIcon size={14} aria-hidden="true" />
-            {report.kind === "message" ? "Message" : "Profile"}
+            {kindLabel}
           </span>
         </div>
         <span className={styles.when}>
@@ -120,6 +131,25 @@ function ReportCard({
         </blockquote>
       )}
 
+      {report.kind === "job" && (
+        <blockquote className={styles.message}>
+          <span className={styles.label}>The reported job</span>
+          {report.jobId !== null ? (
+            <Link
+              href={ROUTES.JOB(report.jobId)}
+              className={styles.profileLink}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {report.jobTitle}
+              <ExternalLink size={13} aria-hidden="true" />
+            </Link>
+          ) : (
+            <>{report.jobTitle} (the recruiter deleted this job)</>
+          )}
+        </blockquote>
+      )}
+
       <div className={styles.bottom}>
         <Link
           href={ROUTES.USER_PROFILE(report.reportedUserId)}
@@ -137,6 +167,16 @@ function ReportCard({
             <button type="button" className="btn-outline btn-sm" disabled={busy} onClick={() => onResolve(report, "dismiss")}>
               Dismiss
             </button>
+            {canHideJob && (
+              <button
+                type="button"
+                className="btn-danger-outline btn-sm"
+                disabled={busy}
+                onClick={() => onResolve(report, "hide_job")}
+              >
+                Hide job
+              </button>
+            )}
             {canSuspend && (
               <button
                 type="button"
@@ -203,7 +243,7 @@ export default function ReportsSection({
             title={view === "open" ? "No open reports" : "No closed reports yet"}
             text={
               view === "open"
-                ? "When someone reports a profile or a message, it shows up here."
+                ? "When someone reports a profile, a message or a job, it shows up here."
                 : "Reports you dismiss or act on are kept here."
             }
           />
