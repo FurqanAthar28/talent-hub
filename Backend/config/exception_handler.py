@@ -52,6 +52,7 @@ FIELD_LABELS = {
     "experienceLevel": "Experience level",
     "salary": "Salary",
     "skills": "Skills",
+    "notes": "Notes",  # "Write with AI" on the job form
     "adminTitle": "Admin title",
     "cvFile": "CV",
     "otp": "OTP",

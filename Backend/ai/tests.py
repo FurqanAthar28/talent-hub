@@ -4,7 +4,7 @@ Tests for the AI app. Run them with:
     python manage.py test ai
 
 These never call the real AI: `_ask_for_json` (the one function that does) is
-replaced with a fake, so the tests are free and work without an API key.
+replaced with a fake, so the tests are fast and work without Ollama.
 """
 
 import json
@@ -32,7 +32,7 @@ GOOD_ANSWER = {
 }
 
 
-@override_settings(OPENAI_API_KEY="test-key", AI_DAILY_LIMIT=10)
+@override_settings(AI_BASE_URL="http://ai.test/v1", AI_DAILY_LIMIT=10)
 class HeadlineBioViewTests(TestCase):
     def setUp(self):
         cache.clear()  # saved answers must not leak from one test to the next
@@ -181,8 +181,8 @@ class HeadlineBioViewTests(TestCase):
 
         self.assertEqual(self.client.post(URL).status_code, 200)
 
-    @override_settings(OPENAI_API_KEY="")
-    def test_missing_key_says_unavailable(self):
+    @override_settings(AI_BASE_URL="")
+    def test_no_ai_server_set_says_unavailable(self):
         response = self.client.post(URL)
 
         self.assertEqual(response.status_code, 503)
@@ -217,7 +217,7 @@ class HeadlineBioViewTests(TestCase):
         self.assertEqual(self.client.post(URL).data["headlines"], ["a", "b", "c"])
 
 
-@override_settings(OPENAI_API_KEY="test-key", AI_MODEL="gpt-4o-mini")
+@override_settings(AI_BASE_URL="http://ai.test/v1", AI_MODEL="qwen2.5:3b", AI_TIMEOUT_SECONDS=25)
 class ProviderTests(SimpleTestCase):
     """The provider network call is replaced; response parsing stays real."""
 
@@ -227,7 +227,7 @@ class ProviderTests(SimpleTestCase):
         )
         with patch("ai.provider.openai.OpenAI") as client_class:
             client_class.return_value.chat.completions.create.return_value = response
-            return provider._ask_for_json("system", "{}")
+            return provider._ask_for_json("system", "{}", 100)
 
     def test_reads_json_answer(self):
         self.assertEqual(self.ask(json.dumps(GOOD_ANSWER)), GOOD_ANSWER)
@@ -237,7 +237,7 @@ class ProviderTests(SimpleTestCase):
             client_class.return_value.chat.completions.create.return_value = SimpleNamespace(
                 choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(GOOD_ANSWER)))]
             )
-            provider._ask_for_json("system", "{}")
+            provider._ask_for_json("system", "{}", 100)
 
         self.assertLess(client_class.call_args.kwargs["timeout"], 30)
         self.assertEqual(client_class.call_args.kwargs["max_retries"], 0)
@@ -245,3 +245,167 @@ class ProviderTests(SimpleTestCase):
     def test_invalid_json_fails(self):
         with self.assertRaises(provider.AIUnavailable):
             self.ask("{not json")
+
+    def test_talks_to_our_own_ai_server(self):
+        with patch("ai.provider.openai.OpenAI") as client_class:
+            client_class.return_value.chat.completions.create.return_value = SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content=json.dumps(GOOD_ANSWER)))]
+            )
+            provider._ask_for_json("system", "{}", 100)
+
+        self.assertEqual(client_class.call_args.kwargs["base_url"], "http://ai.test/v1")
+        create = client_class.return_value.chat.completions.create
+        self.assertEqual(create.call_args.kwargs["model"], "qwen2.5:3b")
+        self.assertEqual(create.call_args.kwargs["max_tokens"], 100)
+
+
+JOB_DRAFT_URL = "/api/ai/job-draft/"
+
+GOOD_DRAFT = {
+    "title": "React Developer",
+    "description": "Build our fintech web app with React and TypeScript. You have 3+ years of React.",
+    "skills": ["React", "TypeScript"],
+}
+
+DRAFT_REQUEST = {
+    "notes": "React dev for our fintech app, 3+ years, TypeScript",
+    "employmentType": "full_time",
+    "workStyle": "onsite",
+    "experienceLevel": "mid",
+    "location": "Lahore",
+}
+
+
+@override_settings(AI_BASE_URL="http://ai.test/v1", AI_DAILY_LIMIT=10)
+class JobDraftViewTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = self.make_user("rec@example.com", Profile.ROLE_RECRUITER)
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+        patcher = patch("ai.provider._ask_for_json", return_value=GOOD_DRAFT)
+        self.fake_ai = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def make_user(self, email, role, approval=Profile.APPROVAL_APPROVED):
+        user = User.objects.create_user(email, email, "S3cure-pass!", first_name="Sara", last_name="Ali")
+        Profile.objects.create(user=user, role=role, approval_status=approval, company_name="Secret Co")
+        return user
+
+    def uses_today(self):
+        usage = AIDailyUsage.objects.filter(user=self.user).first()
+        return usage.count if usage else 0
+
+    def test_returns_a_draft_and_posts_nothing(self):
+        from jobs.models import Job
+
+        response = self.client.post(JOB_DRAFT_URL, DRAFT_REQUEST, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, GOOD_DRAFT)
+        self.assertEqual(Job.objects.count(), 0)
+        self.assertEqual(self.uses_today(), 1)
+
+    def test_sends_only_the_notes_and_picked_details(self):
+        self.client.post(JOB_DRAFT_URL, DRAFT_REQUEST, format="json")
+
+        sent = json.loads(self.fake_ai.call_args.args[1])
+        self.assertEqual(
+            sent,
+            {
+                "notes": DRAFT_REQUEST["notes"],
+                "job_type": "Full-time",
+                "work_style": "On-site",
+                "experience_level": "Mid-level",
+                "location": "Lahore",
+            },
+        )
+        # No name, email or company details.
+        self.assertNotIn("Secret Co", self.fake_ai.call_args.args[1])
+        self.assertNotIn("rec@example.com", self.fake_ai.call_args.args[1])
+
+    def test_only_approved_recruiters(self):
+        for email, role, approval in (
+            ("cand@example.com", Profile.ROLE_CANDIDATE, Profile.APPROVAL_APPROVED),
+            ("wait@example.com", Profile.ROLE_RECRUITER, Profile.APPROVAL_PENDING),
+        ):
+            self.client.force_authenticate(self.make_user(email, role, approval))
+            response = self.client.post(JOB_DRAFT_URL, DRAFT_REQUEST, format="json")
+            self.assertEqual(response.status_code, 403, email)
+        self.fake_ai.assert_not_called()
+
+    def test_login_is_required(self):
+        self.client.force_authenticate(None)
+        self.assertIn(self.client.post(JOB_DRAFT_URL, DRAFT_REQUEST, format="json").status_code, (401, 403))
+
+    def test_too_short_notes_are_refused_without_calling_ai(self):
+        response = self.client.post(JOB_DRAFT_URL, {**DRAFT_REQUEST, "notes": "  dev  "}, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data["message"], "Notes: Write a few more words about the job first.")
+        self.fake_ai.assert_not_called()
+
+    def test_too_long_notes_and_bad_choices_are_refused(self):
+        too_long = self.client.post(JOB_DRAFT_URL, {**DRAFT_REQUEST, "notes": "x" * 1001}, format="json")
+        bad_type = self.client.post(JOB_DRAFT_URL, {**DRAFT_REQUEST, "employmentType": "forever"}, format="json")
+
+        self.assertEqual(too_long.status_code, 400)
+        self.assertEqual(bad_type.status_code, 400)
+        self.fake_ai.assert_not_called()
+
+    def test_same_notes_reuse_the_answer_without_using_a_use(self):
+        self.client.post(JOB_DRAFT_URL, DRAFT_REQUEST, format="json")
+        self.client.post(JOB_DRAFT_URL, DRAFT_REQUEST, format="json")
+
+        self.assertEqual(self.fake_ai.call_count, 1)
+        self.assertEqual(self.uses_today(), 1)
+
+    @override_settings(AI_DAILY_LIMIT=1)
+    def test_daily_limit_is_shared_with_the_headline_writer(self):
+        AIDailyUsage.objects.create(user=self.user, day=timezone.now().date(), count=1)
+
+        response = self.client.post(JOB_DRAFT_URL, DRAFT_REQUEST, format="json")
+
+        self.assertEqual(response.status_code, 429)
+        self.fake_ai.assert_not_called()
+
+    def test_ai_failure_says_unavailable_and_gives_the_use_back(self):
+        self.fake_ai.side_effect = provider.AIUnavailable
+
+        response = self.client.post(JOB_DRAFT_URL, DRAFT_REQUEST, format="json")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data["message"], "AI is unavailable right now.")
+        self.assertEqual(self.uses_today(), 0)
+
+
+class JobDraftAnswerTests(SimpleTestCase):
+    """The AI's answer is checked before it reaches the form."""
+
+    def draft(self, answer):
+        with patch("ai.provider._ask_for_json", return_value=answer):
+            return provider.write_job_draft({}, title_max_length=120, description_max_length=5000, max_skills=3)
+
+    def test_cleans_spaces_and_repeated_skills(self):
+        draft = self.draft(
+            {**GOOD_DRAFT, "title": "  React   Developer ", "skills": ["React", " react ", "", "x" * 61, "Go", "SQL", "AWS"]}
+        )
+
+        self.assertEqual(draft["title"], "React Developer")
+        self.assertEqual(draft["skills"], ["React", "Go", "SQL"])  # max_skills=3
+
+    def test_missing_skills_are_fine(self):
+        self.assertEqual(self.draft({"title": "React Developer", "description": GOOD_DRAFT["description"]})["skills"], [])
+
+    def test_unusable_answers_fail(self):
+        for answer in (
+            {"title": "", "description": GOOD_DRAFT["description"]},
+            {"title": "x" * 121, "description": GOOD_DRAFT["description"]},
+            {"title": "React Developer", "description": "Too short."},
+            {"title": "React Developer", "description": "x" * 5001},
+            {"description": GOOD_DRAFT["description"]},
+            {"title": ["not", "text"], "description": GOOD_DRAFT["description"]},
+        ):
+            with self.assertRaises(provider.AIUnavailable, msg=answer):
+                self.draft(answer)

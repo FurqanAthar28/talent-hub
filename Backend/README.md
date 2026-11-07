@@ -70,11 +70,18 @@ so they never touch your real PostgreSQL data. Only the last line matters:
 
 ## AI features
 
-All AI code lives in the `ai` app, and only `ai/provider.py` talks to the AI provider.
+All AI code lives in the `ai` app, and only `ai/provider.py` talks to the AI.
 
-- Set `OPENAI_API_KEY` in `.env`. Without it the app still works, and the AI button says "AI is unavailable right now".
-- `AI_MODEL` picks the model and `AI_DAILY_LIMIT` sets the uses per candidate per day (default 10).
-- `python manage.py test ai` never calls the real AI, so it's free and needs no key.
+The AI is free and private: an open model runs on your own machine with [Ollama](https://ollama.com),
+so no profile or job text is sent to an AI company. (The `openai` package is only the client;
+Ollama understands the same API.)
+
+- Install Ollama, then run `ollama pull qwen2.5:3b` once. Ollama keeps running in the background.
+- Without Ollama the app still works, and the AI buttons say "AI is unavailable right now".
+- `AI_BASE_URL`, `AI_MODEL` and `AI_TIMEOUT_SECONDS` change where and which model runs.
+  `AI_DAILY_LIMIT` sets the uses per person per day, for all AI buttons together (default 10).
+- On a server, Ollama must run there too (it needs a few GB of RAM). Only point `AI_BASE_URL` at a server you run.
+- `python manage.py test ai` never calls the real AI, so it's free and needs no Ollama.
 
 ## Deploying (for example on Render)
 

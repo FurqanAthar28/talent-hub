@@ -31,6 +31,7 @@ class JobSerializer(serializers.ModelSerializer):
     updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
     recruiter = serializers.SerializerMethodField()
     isMine = serializers.SerializerMethodField()
+    skillMatch = serializers.SerializerMethodField()
 
     class Meta:
         model = Job
@@ -51,6 +52,7 @@ class JobSerializer(serializers.ModelSerializer):
             "updatedAt",
             "recruiter",
             "isMine",
+            "skillMatch",
         ]
 
     def _viewer(self):
@@ -70,6 +72,20 @@ class JobSerializer(serializers.ModelSerializer):
     def get_isMine(self, job):
         viewer = self._viewer()
         return bool(viewer and viewer.pk == job.recruiter_id)
+
+    def get_skillMatch(self, job):
+        """
+        Which of the job's skills the viewing candidate has, and which they're
+        missing. Plain matching, no AI: free, instant, and it can't make things up.
+        None for recruiters and admins, and for jobs that list no skills.
+        """
+        my_skills = self.context.get("my_skills")
+        if my_skills is None or not job.skills:
+            return None
+        return {
+            "matched": [skill for skill in job.skills if skill.lower() in my_skills],
+            "missing": [skill for skill in job.skills if skill.lower() not in my_skills],
+        }
 
     def get_recruiter(self, job):
         """Who posted it. The views load recruiter + profile in the same trip."""

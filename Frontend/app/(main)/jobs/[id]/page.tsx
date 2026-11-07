@@ -7,12 +7,13 @@
  * recruiter directly, through the normal network rules.
  *
  * Anyone but the recruiter and admins can report the job (scam, fake job...).
+ * Candidates also see which of the job's skills they have (job.skillMatch).
  */
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowLeft, BriefcaseBusiness, Clock, Flag, Globe, MapPin, Wallet } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, Check, Clock, Flag, Globe, MapPin, Wallet } from "lucide-react";
 
 import { errorText } from "@/app/api/client";
 import ReportDialog from "@/app/components/ReportDialog";
@@ -120,6 +121,31 @@ export default function JobPage() {
           </Panel>
 
           <div className={ui.stack}>
+            {job.skillMatch && (
+              <Panel title="Your skills">
+                <p className={styles.matchLine}>
+                  You have <strong>{job.skillMatch.matched.length}</strong> of {job.skills.length} skills this job asks for.
+                </p>
+                <div className={styles.tags}>
+                  {job.skillMatch.matched.map((skill) => (
+                    <span key={skill} className={`${styles.tag} ${styles.tagMatched}`}>
+                      <Check size={11} aria-hidden="true" /> {skill}
+                    </span>
+                  ))}
+                  {job.skillMatch.missing.map((skill) => (
+                    <span key={skill} className={`${styles.tag} ${styles.tagMissing}`}>
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+                {job.skillMatch.missing.length > 0 && (
+                  <p className={styles.hint}>
+                    Have one of the others? <Link href={ROUTES.PROFILE_EDIT}>Add it to your profile</Link>.
+                  </p>
+                )}
+              </Panel>
+            )}
+
             <Panel title="Details">
               <div className={styles.factsGrid}>
                 <span className={styles.factRow}>

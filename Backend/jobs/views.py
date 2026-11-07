@@ -56,8 +56,24 @@ def visible_jobs():
     )
 
 
+def my_skill_names(user):
+    """
+    A candidate's own skills, lower case, for "You have 3 of 5 skills".
+    None for recruiters and admins, so they get no match at all.
+    Loaded once here, not once per job, so a list of 100 jobs is still one query.
+    """
+    profile = getattr(user, "profile", None)
+    if profile is None or profile.role != Profile.ROLE_CANDIDATE:
+        return None
+    return {name.lower() for name in profile.skills.values_list("name", flat=True)}
+
+
 def job_data(request, jobs, many=False):
-    context = {"request": request, "is_admin": is_app_admin(request.user)}
+    context = {
+        "request": request,
+        "is_admin": is_app_admin(request.user),
+        "my_skills": my_skill_names(request.user),
+    }
     return JobSerializer(jobs, many=many, context=context).data
 
 

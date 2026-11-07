@@ -13,4 +13,5 @@ app_name = "ai"
 
 urlpatterns = [
     path("headline-bio/", views.headline_bio_view, name="headline-bio"),
+    path("job-draft/", views.job_draft_view, name="job-draft"),
 ]

@@ -10,7 +10,7 @@ from rest_framework.test import APIClient
 
 from accounts import account_state
 from accounts.models import AdminActionLog
-from profiles.models import Profile
+from profiles.models import Profile, Skill
 
 from .models import Job
 from .views import MAX_OPEN_JOBS_PER_RECRUITER
@@ -19,7 +19,7 @@ from .views import MAX_OPEN_JOBS_PER_RECRUITER
 JOB_FIELDS = {
     "id", "title", "employmentType", "workStyle", "experienceLevel", "location",
     "salary", "description", "skills", "status", "hiddenByAdmin", "hiddenReason",
-    "createdAt", "updatedAt", "recruiter", "isMine",
+    "createdAt", "updatedAt", "recruiter", "isMine", "skillMatch",
 }
 
 GOOD_JOB = {
@@ -198,3 +198,79 @@ class JobTests(TestCase):
 
         data = JobSerializer(job, context={"request": FakeRequest()}).data
         self.assertEqual(data["hiddenReason"], "")
+
+
+class SkillMatchTests(TestCase):
+    """ "You have 2 of 3 skills" on a job: plain matching, no AI, candidates only."""
+
+    def setUp(self):
+        self.recruiter = make_user("rec@example.com", Profile.ROLE_RECRUITER)
+        self.candidate = make_user("ali@example.com")
+        for name in ("django", "Python"):
+            Skill.objects.create(profile=self.candidate.profile, name=name)
+        self.job = Job.objects.create(
+            recruiter=self.recruiter,
+            title="Backend Engineer",
+            employment_type="full_time",
+            work_style="remote",
+            experience_level="mid",
+            description=GOOD_JOB["description"],
+            skills=["Django", "PostgreSQL", "Python"],
+        )
+
+    def test_candidate_sees_matched_and_missing_skills(self):
+        data = client_for(self.candidate).get(f"/api/jobs/{self.job.pk}/").json()
+
+        # Upper/lower case doesn't matter, and the job's own spelling is kept.
+        self.assertEqual(data["skillMatch"], {"matched": ["Django", "Python"], "missing": ["PostgreSQL"]})
+
+    def test_list_has_the_match_too(self):
+        rows = client_for(self.candidate).get("/api/jobs/").json()
+
+        self.assertEqual(rows[0]["skillMatch"]["missing"], ["PostgreSQL"])
+
+    def test_candidate_without_skills_is_missing_all(self):
+        newcomer = make_user("new@example.com")
+        data = client_for(newcomer).get(f"/api/jobs/{self.job.pk}/").json()
+
+        self.assertEqual(data["skillMatch"], {"matched": [], "missing": ["Django", "PostgreSQL", "Python"]})
+
+    def test_no_match_for_recruiters_admins_or_jobs_without_skills(self):
+        admin = make_user("boss@example.com", Profile.ROLE_ADMIN)
+        other_recruiter = make_user("rec2@example.com", Profile.ROLE_RECRUITER)
+        for user in (self.recruiter, other_recruiter, admin):
+            data = client_for(user).get(f"/api/jobs/{self.job.pk}/").json()
+            self.assertIsNone(data["skillMatch"], user.email)
+
+        self.job.skills = []
+        self.job.save()
+        data = client_for(self.candidate).get(f"/api/jobs/{self.job.pk}/").json()
+        self.assertIsNone(data["skillMatch"])
+
+    def test_list_loads_my_skills_once(self):
+        for number in range(5):
+            Job.objects.create(
+                recruiter=self.recruiter,
+                title=f"Job {number}",
+                employment_type="full_time",
+                work_style="remote",
+                experience_level="mid",
+                description=GOOD_JOB["description"],
+                skills=["Django"],
+            )
+        client = client_for(self.candidate)
+        client.get("/api/jobs/")  # warm up anything cached once per process
+
+        with self.assertNumQueries(self.queries_for_one_job_list(client)):
+            client.get("/api/jobs/")
+
+    def queries_for_one_job_list(self, client):
+        """Same request with 1 job: the count must not grow with the number of jobs."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        Job.objects.exclude(pk=self.job.pk).update(status=Job.STATUS_CLOSED)
+        with CaptureQueriesContext(connection) as one:
+            client.get("/api/jobs/")
+        Job.objects.update(status=Job.STATUS_OPEN)
+        return len(one)

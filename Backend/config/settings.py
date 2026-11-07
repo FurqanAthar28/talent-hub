@@ -495,12 +495,17 @@ FRONTEND_URL = str(config("FRONTEND_URL", default=CORS_ALLOWED_ORIGINS[0])).rstr
 # 12c. AI FEATURES (see ai/provider.py)
 # =============================================================================
 
-# Without a key the app still works: the AI button says "AI is unavailable right now".
-# Use OpenAI for headline and bio suggestions. Keys stay in environment files.
-OPENAI_API_KEY = str(config("OPENAI_API_KEY", default=""))
-AI_MODEL = str(config("OPENAI_MODEL", default="gpt-4o-mini"))
-OPENAI_TIMEOUT_SECONDS = config("OPENAI_TIMEOUT_SECONDS", default=20, cast=int)
-# How many times one candidate may call the AI per day (restarts at midnight UTC).
+# The AI is a free open model that runs on our own machine with Ollama, so no
+# profile or job text is sent to an AI company. Set it up once:
+#   1. Install Ollama (https://ollama.com)   2. ollama pull qwen2.5:3b
+# If Ollama isn't running, the app still works: AI buttons say "AI is unavailable right now".
+# Only point AI_BASE_URL at a server WE run, never at an AI company's API.
+AI_BASE_URL = str(config("AI_BASE_URL", default="http://127.0.0.1:11434/v1"))
+AI_MODEL = str(config("AI_MODEL", default="qwen2.5:3b"))
+# Must stay below the Next.js proxy's 30 seconds (PROXY_TIMEOUT_MS), or the
+# browser gets the proxy's error instead of our "AI is unavailable" message.
+AI_TIMEOUT_SECONDS = config("AI_TIMEOUT_SECONDS", default=25, cast=int)
+# How many AI uses one person gets per day, for all AI buttons together (restarts at midnight UTC).
 AI_DAILY_LIMIT = config("AI_DAILY_LIMIT", default=10, cast=int)
 
 
