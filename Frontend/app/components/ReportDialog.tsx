@@ -2,7 +2,7 @@
 
 /**
  * The "Report" box: pick a reason, optionally say more, send.
- * Used on someone's profile and on a message in a chat.
+ * Used on someone's profile, on a message in a chat, and on a job post.
  *
  * HOW TO USE
  *   const [reporting, setReporting] = useState<ReportTarget | null>(null);
@@ -32,10 +32,19 @@ type Props = {
   name: string;
   /** For a message: a short copy of it, so they see what they report. */
   messagePreview?: string;
+  /** For a job: its title, shown the same way. */
+  jobTitle?: string;
   onClose: () => void;
 };
 
-export default function ReportDialog({ target, name, messagePreview, onClose }: Props) {
+/** What the box talks about, e.g. "Why are you reporting this job?" */
+const WHAT: Record<ReportTarget["kind"], string> = {
+  profile: "this profile",
+  message: "this message",
+  job: "this job",
+};
+
+export default function ReportDialog({ target, name, messagePreview, jobTitle, onClose }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const detailsId = useId();
@@ -67,7 +76,14 @@ export default function ReportDialog({ target, name, messagePreview, onClose }: 
     }
   }
 
-  const what = target.kind === "message" ? "this message" : "this profile";
+  const what = WHAT[target.kind];
+  const title =
+    target.kind === "job"
+      ? "Report this job"
+      : target.kind === "message"
+        ? `Report a message from ${name}`
+        : `Report ${name}`;
+  const preview = target.kind === "job" ? jobTitle : messagePreview;
 
   return (
     <dialog
@@ -107,13 +123,13 @@ export default function ReportDialog({ target, name, messagePreview, onClose }: 
           }}
         >
           <h2 id={titleId} className={styles.title}>
-            {target.kind === "message" ? `Report a message from ${name}` : `Report ${name}`}
+            {title}
           </h2>
           <p className={styles.text}>
             {`Tell the admins what's wrong with ${what}. ${name} won't know who reported them.`}
           </p>
 
-          {messagePreview && <blockquote className={styles.quote}>{messagePreview}</blockquote>}
+          {preview && <blockquote className={styles.quote}>{preview}</blockquote>}
 
           <fieldset className={styles.reasons}>
             <legend>Why are you reporting {what}?</legend>

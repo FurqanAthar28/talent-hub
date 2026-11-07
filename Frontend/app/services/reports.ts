@@ -1,7 +1,7 @@
 /**
- * Reporting a profile or a message to the admins ("/api/reports/").
+ * Reporting a profile, a message or a job to the admins ("/api/reports/").
  * Django checks everything again (not yourself, only messages from your own
- * chats, one open report per thing).
+ * chats, only jobs you can see, one open report per thing).
  */
 
 import { apiFetch, getApiMessage, readJson } from "../api/client";
@@ -22,9 +22,13 @@ export type ReportReasonValue = (typeof REPORT_REASONS)[number]["value"];
 // Must match Report.DETAILS_MAX_LENGTH in Django.
 export const REPORT_DETAILS_MAX_LENGTH = 500;
 
+// Must match CreateReportSerializer in Backend/reports/serializers.py.
+// For a job, Django works out the reported person itself (the job's recruiter)
+// and only checks that reportedUserId matches it.
 export type ReportTarget =
   | { kind: "profile"; reportedUserId: number }
-  | { kind: "message"; reportedUserId: number; messageId: number };
+  | { kind: "message"; reportedUserId: number; messageId: number }
+  | { kind: "job"; reportedUserId: number; jobId: number };
 
 /** Send a report. Gives back Django's thank-you sentence, or throws its error message. */
 export async function sendReport(target: ReportTarget, reason: ReportReasonValue, details: string): Promise<string> {

@@ -22,6 +22,40 @@ from .serializers import JobSerializer, JobVisibilitySerializer
 ADMIN_JOBS_LIMIT = 200
 
 
+def save_visibility(request, job, hidden, reason):
+    job.hidden_by_admin = hidden
+    job.hidden_reason = reason if hidden else ""
+    job.hidden_by = request.user if hidden else None
+    job.updated_at = timezone.now()
+    job.save(update_fields=["hidden_by_admin", "hidden_reason", "hidden_by", "updated_at"])
+
+
+def hide_job(request, job, reason, extra_metadata=None):
+    """
+    Hide a job and write the audit log line.
+    Used here AND by Reports ("Hide job" on a job report), so both work the same.
+    """
+    save_visibility(request, job, True, reason)
+    log_action(
+        request,
+        action="job_hidden",
+        description=f"Hid the job \"{job.title}\": {reason}",
+        target_user=job.recruiter,
+        metadata={"job_id": job.pk, "reason": reason, **(extra_metadata or {})},
+    )
+
+
+def show_job(request, job, reason=""):
+    save_visibility(request, job, False, "")
+    log_action(
+        request,
+        action="job_shown",
+        description=f"Showed the job \"{job.title}\" again",
+        target_user=job.recruiter,
+        metadata={"job_id": job.pk, "reason": reason},
+    )
+
+
 def admin_job_data(request, job_or_jobs, many=False):
     return JobSerializer(job_or_jobs, many=many, context={"request": request, "is_admin": True}).data
 
@@ -42,19 +76,11 @@ def admin_job_visibility_view(request, job_id):
     reason = serializer.validated_data["reason"]
 
     job = get_object_or_404(Job.objects.select_related("recruiter", "recruiter__profile"), pk=job_id)
-    job.hidden_by_admin = hidden
-    job.hidden_reason = reason if hidden else ""
-    job.hidden_by = request.user if hidden else None
-    job.updated_at = timezone.now()
-    job.save(update_fields=["hidden_by_admin", "hidden_reason", "hidden_by", "updated_at"])
+    if hidden:
+        hide_job(request, job, reason)
+    else:
+        show_job(request, job, reason)
 
-    log_action(
-        request,
-        action="job_hidden" if hidden else "job_shown",
-        description=(f"Hid the job \"{job.title}\": {reason}" if hidden else f"Showed the job \"{job.title}\" again"),
-        target_user=job.recruiter,
-        metadata={"job_id": job.pk, "reason": reason},
-    )
     data = dict(admin_job_data(request, job))
     data["message"] = "Job hidden. The recruiter sees why." if hidden else "Job is visible again."
     return Response(data)

@@ -9,15 +9,18 @@ from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from accounts import account_state
 from accounts.models import AdminActionLog
 from connections.models import Conversation, Message
+from jobs.models import Job
 from profiles.models import Profile
 
 from .models import Report
 
 # These names must match AdminReport in Frontend/app/(main)/admin/types.ts
 ADMIN_REPORT_FIELDS = {
-    "id", "kind", "reason", "reasonLabel", "details", "messageText", "status",
+    "id", "kind", "reason", "reasonLabel", "details", "messageText",
+    "jobId", "jobTitle", "jobHidden", "status",
     "actionTaken", "resolutionNote", "resolvedByName", "resolvedAt", "createdAt",
     "reporterName", "reporterEmail", "reportedUserId", "reportedUserName",
     "reportedUserEmail", "reportedUserRole", "reportedUserAccountStatus",
@@ -203,3 +206,151 @@ class AdminReportTests(ReportTestBase):
         self.assertEqual(response.status_code, 400)
         self.zain_report.refresh_from_db()
         self.assertEqual(self.zain_report.status, Report.STATUS_OPEN)
+
+
+class JobReportTests(ReportTestBase):
+    def setUp(self):
+        super().setUp()
+        self.admin_client = self.client_for(self.admin)
+        self.recruiter = self.make_user("rec@example.com", Profile.ROLE_RECRUITER)
+        self.job = self.make_job("Remote crypto job, pay a fee first")
+        self.other_job = self.make_job("Backend Engineer")
+
+    def make_job(self, title, recruiter=None, **fields):
+        return Job.objects.create(
+            recruiter=recruiter or self.recruiter,
+            title=title,
+            employment_type="full_time",
+            work_style="remote",
+            experience_level="mid",
+            description="A job description that is long enough to be real.",
+            **fields,
+        )
+
+    def report_job(self, reporter, job, **body):
+        return self.report(reporter, kind="job", jobId=job.pk, reason="scam", **body)
+
+    def resolve(self, report, action, note=""):
+        return self.admin_client.post(
+            f"/api/admin/reports/{report.pk}/resolve/", {"action": action, "note": note}, format="json"
+        )
+
+    # ----- reporting -----
+
+    def test_report_a_visible_job_copies_its_title(self):
+        response = self.report_job(self.ali, self.job)
+        self.assertEqual(response.status_code, 201)
+        report = Report.objects.get()
+        self.assertEqual(report.kind, Report.KIND_JOB)
+        self.assertEqual(report.job, self.job)
+        self.assertEqual(report.job_title, "Remote crypto job, pay a fee first")
+        # The server picks who is reported: always the job's recruiter.
+        self.assertEqual(report.reported_user, self.recruiter)
+
+    def test_reported_user_from_the_browser_must_be_the_recruiter(self):
+        self.assertEqual(self.report_job(self.ali, self.job, reportedUserId=self.zain.pk).status_code, 404)
+        self.assertEqual(self.report_job(self.ali, self.job, reportedUserId=self.recruiter.pk).status_code, 201)
+
+    def test_job_report_needs_a_job(self):
+        self.assertEqual(self.report(self.ali, kind="job", reason="scam").status_code, 400)
+        self.assertEqual(self.report(self.ali, kind="job", jobId=999999, reason="scam").status_code, 404)
+
+    def test_cannot_report_your_own_job(self):
+        response = self.report_job(self.recruiter, self.job)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Report.objects.exists())
+
+    def test_cannot_report_jobs_you_cant_see(self):
+        closed = self.make_job("Closed one", status=Job.STATUS_CLOSED)
+        hidden = self.make_job("Hidden one", hidden_by_admin=True, hidden_reason="Spam")
+        gone_recruiter = self.make_user("gone@example.com", Profile.ROLE_RECRUITER)
+        gone_job = self.make_job("Suspended recruiter's job", recruiter=gone_recruiter)
+        account_state.suspend(gone_recruiter, "test")
+
+        for job in (closed, hidden, gone_job):
+            response = self.report_job(self.ali, job)
+            self.assertEqual(response.status_code, 404, job.title)
+            self.assertEqual(response.json()["message"], "We couldn't find that job.")
+        self.assertFalse(Report.objects.exists())
+
+    def test_reporting_a_job_twice_while_open_makes_one_report(self):
+        self.assertEqual(self.report_job(self.ali, self.job).status_code, 201)
+        second = self.report_job(self.ali, self.job)
+        self.assertEqual(second.status_code, 200)
+        self.assertIn("already", second.json()["message"])
+
+        # Another job by the same recruiter is a different thing to report.
+        self.assertEqual(self.report_job(self.ali, self.other_job).status_code, 201)
+        self.assertEqual(Report.objects.count(), 2)
+
+    # ----- the admin -----
+
+    def test_admin_list_shows_the_job(self):
+        self.report_job(self.ali, self.job)
+        row = self.admin_client.get("/api/admin/reports/").json()[0]
+        self.assertEqual(set(row.keys()), ADMIN_REPORT_FIELDS)
+        self.assertEqual(row["kind"], "job")
+        self.assertEqual(row["jobId"], self.job.pk)
+        self.assertEqual(row["jobTitle"], "Remote crypto job, pay a fee first")
+        self.assertFalse(row["jobHidden"])
+
+    def test_hide_job_hides_it_and_closes_every_open_report_about_it(self):
+        self.report_job(self.ali, self.job)
+        self.report_job(self.sara, self.job)
+        self.report_job(self.ali, self.other_job)
+        first = Report.objects.filter(job=self.job).first()
+
+        response = self.resolve(first, "hide_job", "Asks for a fee")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["closedOthers"], 1)
+        self.assertTrue(response.json()["jobHidden"])
+
+        self.job.refresh_from_db()
+        self.assertTrue(self.job.hidden_by_admin)
+        self.assertEqual(self.job.hidden_reason, "Asks for a fee")
+        self.assertEqual(self.job.hidden_by, self.admin)
+
+        about_job = Report.objects.filter(job=self.job)
+        self.assertEqual(about_job.filter(status=Report.STATUS_ACTIONED, action_taken="hide_job").count(), 2)
+        # The other job's report stays open, and the recruiter's account is untouched.
+        self.assertEqual(Report.objects.get(job=self.other_job).status, Report.STATUS_OPEN)
+        self.recruiter.refresh_from_db()
+        self.assertTrue(self.recruiter.is_active)
+
+        # Same audit line as the admin Jobs page, with the report id.
+        log = AdminActionLog.objects.get(action="job_hidden", target_user=self.recruiter)
+        self.assertEqual(log.metadata["job_id"], self.job.pk)
+        self.assertEqual(log.metadata["report_id"], first.pk)
+
+    def test_hide_job_needs_a_note_and_a_job_report(self):
+        self.report_job(self.ali, self.job)
+        self.report(self.ali, reportedUserId=self.zain.pk)
+        job_report = Report.objects.get(kind="job")
+        profile_report = Report.objects.get(kind="profile")
+
+        self.assertEqual(self.resolve(job_report, "hide_job").status_code, 400)
+        self.assertEqual(self.resolve(profile_report, "hide_job", "Nope").status_code, 400)
+        self.job.refresh_from_db()
+        self.assertFalse(self.job.hidden_by_admin)
+
+    def test_suspend_from_a_job_report_acts_on_the_recruiter(self):
+        self.report_job(self.ali, self.job)
+        response = self.resolve(Report.objects.get(), "suspend", "Scam jobs")
+        self.assertEqual(response.status_code, 200)
+        self.recruiter.refresh_from_db()
+        self.assertEqual(self.recruiter.profile.account_status, Profile.ACCOUNT_SUSPENDED)
+
+    def test_deleted_job_keeps_the_report_and_title(self):
+        self.report_job(self.ali, self.job)
+        report = Report.objects.get()
+        self.job.delete()
+
+        row = self.admin_client.get("/api/admin/reports/").json()[0]
+        self.assertIsNone(row["jobId"])
+        self.assertEqual(row["jobTitle"], "Remote crypto job, pay a fee first")
+        self.assertFalse(row["jobHidden"])
+
+        response = self.resolve(report, "hide_job", "Scam")
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["message"], "This job no longer exists.")
+        self.assertEqual(self.resolve(report, "dismiss").status_code, 200)

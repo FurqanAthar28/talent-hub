@@ -5,24 +5,30 @@
  * hiring on the right with a button to their profile (where Connect /
  * Message live). There's no "apply" form on purpose: candidates talk to the
  * recruiter directly, through the normal network rules.
+ *
+ * Anyone but the recruiter and admins can report the job (scam, fake job...).
  */
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowLeft, BriefcaseBusiness, Clock, Globe, MapPin, Wallet } from "lucide-react";
+import { ArrowLeft, BriefcaseBusiness, Clock, Flag, Globe, MapPin, Wallet } from "lucide-react";
 
 import { errorText } from "@/app/api/client";
+import ReportDialog from "@/app/components/ReportDialog";
 import { Avatar, EmptyState, Notice, Panel, ui } from "@/app/components/ui";
 import { ROUTES } from "@/app/config/routes";
 import { getJob, postedAgo, type Job } from "@/app/services/jobs";
+import { isAdmin, useCurrentUser } from "../../CurrentUserContext";
 import { jobKind, jobPlace } from "../components/JobCard";
 import styles from "../jobs.module.css";
 
 export default function JobPage() {
   const { id } = useParams<{ id: string }>();
+  const me = useCurrentUser();
   const [job, setJob] = useState<Job | null>(null);
   const [error, setError] = useState("");
+  const [reporting, setReporting] = useState(false); // the Report box is open
 
   useEffect(() => {
     let pageIsOpen = true;
@@ -66,6 +72,8 @@ export default function JobPage() {
   }
 
   const company = job.recruiter.companyName || job.recruiter.name;
+  // Admins act from the admin page instead, and nobody reports their own job (Django checks too).
+  const canReport = !job.isMine && !isAdmin(me);
 
   return (
     <main className={ui.page}>
@@ -160,12 +168,28 @@ export default function JobPage() {
                   <p className={styles.hint}>
                     Connect with {job.recruiter.name.split(" ")[0]}, then message them about this job.
                   </p>
+                  {canReport && (
+                    <div className={styles.sideButtons}>
+                      <button type="button" className="btn-outline btn-sm" onClick={() => setReporting(true)}>
+                        <Flag size={14} aria-hidden="true" /> Report job
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </Panel>
           </div>
         </div>
       </div>
+
+      {reporting && (
+        <ReportDialog
+          target={{ kind: "job", reportedUserId: job.recruiter.id, jobId: job.id }}
+          name={job.recruiter.name}
+          jobTitle={job.title}
+          onClose={() => setReporting(false)}
+        />
+      )}
     </main>
   );
 }
